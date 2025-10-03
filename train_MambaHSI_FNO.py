@@ -6,14 +6,14 @@ import random
 import time
 
 import numpy as np
+import swanlab
 import torch
-from PIL import Image
-from torchvision import models, transforms
+from torchvision import transforms
 
 import utils.data_load_operate as data_load_operate
 from model.MambaHSIFNO import MambaHSIFNO
 from utils.evaluation import Evaluator
-from utils.HSICommonUtils import ImageStretching, normlize3D
+from utils.HSICommonUtils import ImageStretching
 from utils.Loss import head_loss, resize
 
 # import matplotlib.pyplot as plt
@@ -21,9 +21,19 @@ from utils.Loss import head_loss, resize
 from utils.setup_logger import setup_logger
 from utils.visual_predict import visualize_predict
 
-torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)  # type: ignore
 
 time_current = time.strftime("%y-%m-%d-%H.%M", time.localtime())
+
+swanlab.init(
+    project="MambaHSI",
+    workspace="kites",
+    experiment_name="gFNO patch_embedding@128",
+    config={
+        "type": "gFNO",
+        "layer": "patch_embedding@128",
+    },
+)
 
 
 def vis_a_image(
@@ -56,17 +66,17 @@ def setup_seed(seed):
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True  # type: ignore
+    torch.backends.cudnn.benchmark = False  # type: ignore
 
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_index", type=int, default=0)
+    parser.add_argument("--dataset_index", type=int, default=1)
     parser.add_argument("--data_set_path", type=str, default="./data")
     parser.add_argument("--work_dir", type=str, default="./")
     parser.add_argument("--lr", type=float, default=0.0003)
-    parser.add_argument("--max_epoch", type=int, default=0)
+    parser.add_argument("--max_epoch", type=int, default=200)
     parser.add_argument("--train_samples", type=int, default=30)
     parser.add_argument("--val_samples", type=int, default=10)
     parser.add_argument("--exp_name", type=str, default="RUNS")
@@ -159,6 +169,7 @@ if __name__ == "__main__":
     ratio_list = [0.1, 0.01]  # [train_ratio,val_ratio]
 
     loss_func = torch.nn.CrossEntropyLoss(ignore_index=-1)
+    net = None
 
     OA_ALL = []
     AA_ALL = []
@@ -218,7 +229,7 @@ if __name__ == "__main__":
         logger.info(net)
 
         x = transform(np.array(img))
-        x = x.unsqueeze(0).float().to(device)
+        x = x.unsqueeze(0).float().to(device)  # type: ignore
 
         train_label = train_label.to(device)
         test_label = test_label.to(device)
@@ -243,6 +254,7 @@ if __name__ == "__main__":
         tic1 = time.perf_counter()
         best_val_acc = 0
 
+        epoch = 0
         for epoch in range(max_epoch):
             y_train = train_label.unsqueeze(0)
             train_acc_sum, trained_samples_counter = 0.0, 0
@@ -271,46 +283,19 @@ if __name__ == "__main__":
                 ls2.backward()
                 optimizer.step()
                 torch.cuda.empty_cache()
-                logger.info(
-                    "Iter:{}|loss:{}".format(epoch, (ls1 + ls2).detach().cpu().numpy())
-                )
+                loss = (ls1 + ls2).detach().cpu().numpy()
+                logger.info("Iter:{}|loss:{}".format(epoch, loss))
+                swanlab.log({"train/loss": loss}, step=epoch)
 
             else:
-                try:
-                    y_pred = net(x)
-                    ls = head_loss(loss_func, y_pred, y_train.long())
-                    optimizer.zero_grad()
-                    ls.backward()
-                    optimizer.step()
-                    logger.info(
-                        "Iter:{}|loss:{}".format(epoch, ls.detach().cpu().numpy())
-                    )
-                except:
-                    optimizer.zero_grad()
-                    torch.cuda.empty_cache()
-                    split_image = True
-                    x_part1 = x[:, :, : x.shape[2] // 2 + 5, :]
-                    y_part1 = y_train[:, : x.shape[2] // 2 + 5, :]
-                    x_part2 = x[:, :, x.shape[2] // 2 - 5 :, :]
-                    y_part2 = y_train[:, x.shape[2] // 2 - 5 :, :]
-
-                    y_pred_part1 = net(x_part1)
-                    ls1 = head_loss(loss_func, y_pred_part1, y_part1.long())
-                    optimizer.zero_grad()
-                    ls1.backward()
-                    optimizer.step()
-
-                    y_pred_part2 = net(x_part2)
-                    ls2 = head_loss(loss_func, y_pred_part2, y_part2.long())
-                    optimizer.zero_grad()
-                    ls2.backward()
-                    optimizer.step()
-
-                    logger.info(
-                        "Iter:{}|loss:{}".format(
-                            epoch, (ls1 + ls2).detach().cpu().numpy()
-                        )
-                    )
+                y_pred = net(x)
+                ls = head_loss(loss_func, y_pred, y_train.long())
+                optimizer.zero_grad()
+                ls.backward()
+                optimizer.step()
+                loss = ls.detach().cpu().numpy()
+                logger.info("Iter:{}|loss:{}".format(epoch, loss))
+                swanlab.log({"train/loss": loss}, step=epoch)
 
             torch.cuda.empty_cache()
             # evaluate stage
@@ -339,6 +324,15 @@ if __name__ == "__main__":
                         epoch, OA, mAcc, Kappa, mIOU, IOU, Acc
                     )
                 )
+                swanlab.log(
+                    {
+                        "val/OA": OA,
+                        "val/mAcc": mAcc,
+                        "val/Kappa": Kappa,
+                        "val/mIOU": mIOU,
+                    },
+                    step=epoch,
+                )
                 # save weight
                 if OA >= best_val_acc:
                     best_epoch = epoch + 1
@@ -365,7 +359,7 @@ if __name__ == "__main__":
         pred_test = []
 
         load_weight_path = save_weight_path
-        net.update_params = None
+        net.update_params = None  # type: ignore
         # best_net = copy.deepcopy(net)
         best_net = MambaHSIFNO(
             in_channels=channels, num_classes=class_count, embedding_channels=128
@@ -399,6 +393,15 @@ if __name__ == "__main__":
                 "Test {}|OA:{}|MACC:{}|Kappa:{}|MIOU:{}|IOU:{}|ACC:{}".format(
                     epoch, OA_test, mAcc_test, Kappa_test, mIOU_test, IOU_test, Acc_test
                 )
+            )
+            swanlab.log(
+                {
+                    "test/OA": OA_test,
+                    "test/mAcc": mAcc_test,
+                    "test/Kappa": Kappa_test,
+                    "test/mIOU": mIOU_test,
+                },
+                step=epoch,
             )
             vis_a_image(gt, predict_test, predict_save_path, gt_save_path)
         # Output infors

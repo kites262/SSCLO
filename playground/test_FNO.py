@@ -10,8 +10,6 @@ def test_FourierNeuralOperator2D():
     fno = FourierNeuralOperator2D(
         in_channels=3,
         out_channels=5,
-        in_y=16,
-        in_x=32,
         reserved_x=10,
         reserved_y=16,
     )

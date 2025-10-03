@@ -122,8 +122,6 @@ class FourierLayer2D(nn.Module):
             fno_layer = FourierNeuralOperator2D(
                 in_channels=self.in_channels_index[i],
                 out_channels=self.out_channels_index[i],
-                in_x=self.in_width,
-                in_y=self.in_height,
                 reserved_x=int((self.in_width // 2 + 1) * self.reserved_ratio),
                 reserved_y=int(self.in_height * self.reserved_ratio),
             ).to(x.device)
@@ -164,8 +162,6 @@ class FourierNeuralOperator2D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        in_x: int,
-        in_y: int,
         reserved_x: int,
         reserved_y: int,
     ):
@@ -173,8 +169,6 @@ class FourierNeuralOperator2D(nn.Module):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.in_x = in_x
-        self.in_y = in_y
         self.reserved_x = reserved_x
         self.reserved_y = reserved_y
 
