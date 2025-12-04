@@ -1,0 +1,13 @@
+
+
+***************Mean result of 1times runs ********************
+List of OA:[]
+List of AA:[]
+List of KPP:[]
+OA=nan+-nan
+AA=nan+-nan
+Kpp=nan+-nan
+Acc per class=
+nan+-nan
+Average training time=nan+-nan
+Average testing time=nan+-nan

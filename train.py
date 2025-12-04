@@ -1,64 +1,34 @@
 import os
-import random
 
 import hydra
 import numpy as np
 import swanlab
 import torch
 from hydra.utils import instantiate
+from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from torchvision import transforms
 
 import utils.data_load_operate as data_load_operate
 from utils.evaluation import Evaluator
 from utils.HSICommonUtils import ImageStretching
-from utils.Loss import head_loss, resize
-from utils.setup_logger import setup_logger
-from utils.visual_predict import visualize_predict
+from utils.logger import setup_logger
+from utils.Loss import head_loss
+from utils.seed import setup_seed
+from utils.visual_predict import vis_a_image
 
-torch.autograd.set_detect_anomaly(True)
-
-
-def vis_a_image(
-    gt_vis,
-    pred_vis,
-    save_single_predict_path,
-    save_single_gt_path,
-    only_vis_label=False,
-):
-    visualize_predict(
-        gt_vis,
-        pred_vis,
-        save_single_predict_path,
-        save_single_gt_path,
-        only_vis_label=only_vis_label,
-    )
-    visualize_predict(
-        gt_vis,
-        pred_vis,
-        save_single_predict_path.replace(".png", "_mask.png"),
-        save_single_gt_path,
-        only_vis_label=True,
-    )
-
-
-def setup_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+# Train exception detection
+# torch.autograd.set_detect_anomaly(True)
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def train(cfg: DictConfig) -> None:
+    setup_logger()
     device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
     config_dict = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(config_dict, dict)
 
-    swanlab_mode = cfg.swanlab_mode
+    swanlab_mode = cfg.swanlab
 
     swanlab.init(
         project="MambaHSI",
@@ -68,7 +38,7 @@ def train(cfg: DictConfig) -> None:
         mode=swanlab_mode,
     )
 
-    seed_list = [0]
+    seed = cfg.seed
 
     train_samples = cfg.train_samples
     val_samples = cfg.val_samples
@@ -99,10 +69,6 @@ def train(cfg: DictConfig) -> None:
     save_folder = f"{model_name}_{dataset_name}"
     os.makedirs(save_folder, exist_ok=True)
 
-    save_log_path = os.path.join(
-        save_folder, "train_tr{}_val{}.log".format(train_samples, val_samples)
-    )
-    logger = setup_logger(name="{}".format(dataset_name), logfile=save_log_path)
     torch.cuda.empty_cache()
 
     logger.info(save_folder)
@@ -123,355 +89,133 @@ def train(cfg: DictConfig) -> None:
     loss_func = torch.nn.CrossEntropyLoss(ignore_index=-1)
     net = None
 
-    OA_ALL = []
-    AA_ALL = []
-    KPP_ALL = []
-    EACH_ACC_ALL = []
-    Train_Time_ALL = []
-    Test_Time_ALL = []
     evaluator = Evaluator(num_class=class_count)
 
-    for exp_idx, curr_seed in enumerate(seed_list):
-        setup_seed(curr_seed)
-        single_experiment_name = "run{}_seed{}".format(str(exp_idx), str(curr_seed))
-        save_single_experiment_folder = os.path.join(
-            save_folder, single_experiment_name
-        )
-        if not os.path.exists(save_single_experiment_folder):
-            os.mkdir(save_single_experiment_folder)
-        save_vis_folder = os.path.join(save_single_experiment_folder, "vis")
-        if not os.path.exists(save_vis_folder):
-            os.makedirs(save_vis_folder)
+    setup_seed(seed)
+    save_vis_folder = os.path.join(save_folder, "vis")
+    if not os.path.exists(save_vis_folder):
+        os.makedirs(save_vis_folder)
 
-        save_weight_path = os.path.join(
-            save_single_experiment_folder,
-            "best_tr{}_val{}.pth".format(train_samples, val_samples),
-        )
-        # results_save_path = os.path.join(
-        #     save_single_experiment_folder,
-        #     "result_tr{}_val{}.txt".format(train_samples, val_samples),
-        # )
-        # predict_save_path = os.path.join(
-        #     save_single_experiment_folder,
-        #     "pred_vis_tr{}_val{}.png".format(train_samples, val_samples),
-        # )
-        # gt_save_path = os.path.join(
-        #     save_single_experiment_folder,
-        #     "gt_vis_tr{}_val{}.png".format(train_samples, val_samples),
-        # )
+    best_model_path = os.path.join(
+        save_folder,
+        "best_tr{}_val{}.pth".format(train_samples, val_samples),
+    )
+    predict_save_path = os.path.join(
+        save_folder,
+        "pred_vis_tr{}_val{}.png".format(train_samples, val_samples),
+    )
+    gt_save_path = os.path.join(
+        save_folder,
+        "gt_vis_tr{}_val{}.png".format(train_samples, val_samples),
+    )
 
-        train_data_index, val_data_index, test_data_index, all_data_index = (
-            data_load_operate.sampling(
-                ratio_list,
-                [train_samples, val_samples],
-                gt_reshape,
-                class_count,
-                flag_list[0],
+    train_data_index, val_data_index, test_data_index, all_data_index = (
+        data_load_operate.sampling(
+            ratio_list,
+            [train_samples, val_samples],
+            gt_reshape,
+            class_count,
+            flag_list[0],
+        )
+    )
+    index = (train_data_index, val_data_index, test_data_index)
+    train_label, val_label, test_label = data_load_operate.generate_image_iter(
+        data, data_height, data_width, gt_reshape, index
+    )
+
+    net = instantiate(
+        cfg.model.instance,
+        in_channels=data_channels,
+        num_classes=class_count,
+    )
+    logger.info(net)
+
+    x = transform(np.array(img))
+    x = x.unsqueeze(0).float().to(device)  # type: ignore
+
+    train_label = train_label.to(device)
+    test_label = test_label.to(device)
+    val_label = val_label.to(device)
+
+    # ############################################
+    # val_label = test_label
+    # ############################################
+
+    net.to(device)
+
+    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+
+    logger.info(optimizer)
+
+    best_val_acc = 0
+
+    epoch = 0
+    for epoch in range(max_epochs):
+        y_train = train_label.unsqueeze(0)
+
+        net.train()
+        if split_image:
+            x_part1 = x[:, :, : x.shape[2] // 2 + 5, :]
+            y_part1 = y_train[:, : x.shape[2] // 2 + 5, :]
+            x_part2 = x[:, :, x.shape[2] // 2 - 5 :, :]
+            y_part2 = y_train[:, x.shape[2] // 2 - 5 :, :]
+            y_pred_part1 = net(x_part1)
+
+            ls1 = head_loss(loss_func, y_pred_part1, y_part1.long())
+            optimizer.zero_grad()
+            ls1.backward()
+            optimizer.step()
+            torch.cuda.empty_cache()
+
+            y_pred_part2 = net(x_part2)
+            ls2 = head_loss(loss_func, y_pred_part2, y_part2.long())
+            optimizer.zero_grad()
+            ls2.backward()
+            optimizer.step()
+            torch.cuda.empty_cache()
+            loss = (ls1 + ls2).detach().cpu().numpy()
+            logger.debug(f"epoch {epoch}")
+            logger.debug(f"loss {loss}")
+            swanlab.log({"train/loss": loss}, step=epoch)
+        else:
+            y_pred = net(x)
+            ls = head_loss(loss_func, y_pred, y_train.long())
+            optimizer.zero_grad()
+            ls.backward()
+            optimizer.step()
+            loss = ls.detach().cpu().numpy()
+            logger.debug(f"epoch {epoch}")
+            logger.debug(f"loss {loss}")
+            swanlab.log({"train/loss": loss}, step=epoch)
+
+        torch.cuda.empty_cache()
+        result = evaluator.eval_and_log(net, x, val_label, epoch)
+        OA = result["OA"]
+        predict = result["predict"]
+
+        # save weight
+        if OA >= max(best_val_acc, 0.9):
+            best_val_acc = OA
+            torch.save(net.state_dict(), best_model_path)
+        if (epoch + 1) % 50 == 0:
+            save_single_predict_path = os.path.join(
+                save_vis_folder, "predict_{}.png".format(str(epoch + 1))
             )
-        )
-        index = (train_data_index, val_data_index, test_data_index)
-        train_label, val_label, test_label = data_load_operate.generate_image_iter(
-            data, data_height, data_width, gt_reshape, index
-        )
+            save_single_gt_path = os.path.join(save_vis_folder, "gt.png")
+            vis_a_image(gt, predict, save_single_predict_path, save_single_gt_path)
 
-        # build Model
+        torch.cuda.empty_cache()
 
-        net = instantiate(
-            cfg.model.instance,
-            in_channels=data_channels,
-            num_classes=class_count,
-        )
-        logger.info(net)
+    logger.info("==== Stage Test ====")
 
-        x = transform(np.array(img))
-        x = x.unsqueeze(0).float().to(device)  # type: ignore
-
-        train_label = train_label.to(device)
-        test_label = test_label.to(device)
-        val_label = val_label.to(device)
-
-        # ############################################
-        # val_label = test_label
-        # ############################################
-
+    if not os.path.exists(best_model_path):
+        logger.info("No best model found")
+    else:
+        net.load_state_dict(torch.load(best_model_path))
         net.to(device)
+        result = evaluator.eval_and_log(net, x, test_label, epoch=-1)
 
-        optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
-
-        logger.info(optimizer)
-
-        best_val_acc = 0
-
-        epoch = 0
-        for epoch in range(max_epochs):
-            y_train = train_label.unsqueeze(0)
-
-            net.train()
-
-            if split_image:
-                x_part1 = x[:, :, : x.shape[2] // 2 + 5, :]
-                y_part1 = y_train[:, : x.shape[2] // 2 + 5, :]
-                x_part2 = x[:, :, x.shape[2] // 2 - 5 :, :]
-                y_part2 = y_train[:, x.shape[2] // 2 - 5 :, :]
-                y_pred_part1 = net(x_part1)
-
-                ls1 = head_loss(loss_func, y_pred_part1, y_part1.long())
-                optimizer.zero_grad()
-                ls1.backward()
-                optimizer.step()
-                torch.cuda.empty_cache()
-
-                y_pred_part2 = net(x_part2)
-                ls2 = head_loss(loss_func, y_pred_part2, y_part2.long())
-                optimizer.zero_grad()
-                ls2.backward()
-                optimizer.step()
-                torch.cuda.empty_cache()
-                loss = (ls1 + ls2).detach().cpu().numpy()
-                logger.info("Iter:{}|loss:{}".format(epoch, loss))
-                swanlab.log({"train/loss": loss}, step=epoch)
-
-            else:
-                y_pred = net(x)
-                ls = head_loss(loss_func, y_pred, y_train.long())
-                optimizer.zero_grad()
-                ls.backward()
-                optimizer.step()
-                loss = ls.detach().cpu().numpy()
-                swanlab.log({"train/loss": loss}, step=epoch)
-                logger.info("Iter:{}|loss:{}".format(epoch, loss))
-
-            torch.cuda.empty_cache()
-            # evaluate stage
-            net.eval()
-            with torch.no_grad():
-                evaluator.reset()
-                # output_val = net(x)
-                output_val = net(x)
-                y_val = val_label.unsqueeze(0)
-                seg_logits = resize(
-                    input=output_val,
-                    size=y_val.shape[1:],
-                    mode="bilinear",
-                    align_corners=True,
-                )
-                predict = torch.argmax(seg_logits, dim=1).cpu().numpy()
-                Y_val_np = val_label.cpu().numpy()
-                Y_val_255 = np.where(Y_val_np == -1, 255, Y_val_np)
-                evaluator.add_batch(np.expand_dims(Y_val_255, axis=0), predict)
-                OA = evaluator.Pixel_Accuracy()
-                mIOU, IOU = evaluator.Mean_Intersection_over_Union()
-                mAcc, Acc = evaluator.Pixel_Accuracy_Class()
-                Kappa = evaluator.Kappa()
-                logger.info(
-                    "Evaluate {}|OA:{}|MACC:{}|Kappa:{}|MIOU:{}|IOU:{}|ACC:{}".format(
-                        epoch, OA, mAcc, Kappa, mIOU, IOU, Acc
-                    )
-                )
-                swanlab.log(
-                    {
-                        "val/OA": OA,
-                        "val/mAcc": mAcc,
-                        "val/Kappa": Kappa,
-                        "val/mIOU": mIOU,
-                    },
-                    step=epoch,
-                )
-                # save weight
-                if OA >= best_val_acc:
-                    best_val_acc = OA
-                    # torch.save(net,save_weight_path)
-                    torch.save(net.state_dict(), save_weight_path)
-                    # save_epoch_weight_path = os.path.join(save_folder,'{}.pth'.format(str(epoch+1)))
-                    # torch.save(net.state_dict(), save_epoch_weight_path)
-                if (epoch + 1) % 50 == 0:
-                    save_single_predict_path = os.path.join(
-                        save_vis_folder, "predict_{}.png".format(str(epoch + 1))
-                    )
-                    save_single_gt_path = os.path.join(save_vis_folder, "gt.png")
-                    vis_a_image(
-                        gt, predict, save_single_predict_path, save_single_gt_path
-                    )
-
-                # net.train()
-            torch.cuda.empty_cache()
-
-        # logger.info(
-        #     "\n\n====================Starting evaluation for testing set.========================\n"
-        # )
-
-        # load_weight_path = save_weight_path
-        # net.update_params = None  # type: ignore
-        # # best_net = copy.deepcopy(net)
-        # best_net = MambaHSI(
-        #     in_channels=channels, num_classes=class_count, hidden_dim=128
-        # )
-
-        # best_net.to(device)
-        # best_net.load_state_dict(torch.load(load_weight_path))
-        # best_net.eval()
-        # test_evaluator = Evaluator(num_class=class_count)
-        # with torch.no_grad():
-        #     test_evaluator.reset()
-        #     output_test = best_net(x)
-
-        #     y_test = test_label.unsqueeze(0)
-        #     seg_logits_test = resize(
-        #         input=output_test,
-        #         size=y_test.shape[1:],
-        #         mode="bilinear",
-        #         align_corners=True,
-        #     )
-        #     predict_test = torch.argmax(seg_logits_test, dim=1).cpu().numpy()
-        #     Y_test_np = test_label.cpu().numpy()
-        #     Y_test_255 = np.where(Y_test_np == -1, 255, Y_test_np)
-        #     test_evaluator.add_batch(np.expand_dims(Y_test_255, axis=0), predict_test)
-        #     OA_test = test_evaluator.Pixel_Accuracy()
-        #     mIOU_test, IOU_test = test_evaluator.Mean_Intersection_over_Union()
-        #     mAcc_test, Acc_test = test_evaluator.Pixel_Accuracy_Class()
-        #     Kappa_test = evaluator.Kappa()
-        #     logger.info(
-        #         "Test {}|OA:{}|MACC:{}|Kappa:{}|MIOU:{}|IOU:{}|ACC:{}".format(
-        #             epoch, OA_test, mAcc_test, Kappa_test, mIOU_test, IOU_test, Acc_test
-        #         )
-        #     )
-        #     swanlab.log(
-        #         {
-        #             "test/OA": OA_test,
-        #             "test/mAcc": mAcc_test,
-        #             "test/Kappa": Kappa_test,
-        #             "test/mIOU": mIOU_test,
-        #         },
-        #         step=epoch,
-        #     )
-        #     vis_a_image(gt, predict_test, predict_save_path, gt_save_path)
-        # # Output infors
-        # f = open(results_save_path, "a+")
-        # str_results = (
-        #     "\n======================"
-        #     + " exp_idx="
-        #     + str(exp_idx)
-        #     + " seed="
-        #     + str(curr_seed)
-        #     + " learning rate="
-        #     + str(learning_rate)
-        #     + " epochs="
-        #     + str(max_epochs)
-        #     + " train ratio="
-        #     + str(ratio_list[0])
-        #     + " val ratio="
-        #     + str(ratio_list[1])
-        #     + " ======================"
-        #     + "\nOA="
-        #     + str(OA_test)
-        #     + "\nAA="
-        #     + str(mAcc_test)
-        #     + "\nkpp="
-        #     + str(Kappa_test)
-        #     + "\nmIOU_test:"
-        #     + str(mIOU_test)
-        #     + "\nIOU_test:"
-        #     + str(IOU_test)
-        #     + "\nAcc_test:"
-        #     + str(Acc_test)
-        #     + "\n"
-        # )
-        # logger.info(str_results)
-        # f.write(str_results)
-        # f.close()
-
-        # OA_ALL.append(OA_test)
-        # AA_ALL.append(mAcc_test)
-        # KPP_ALL.append(Kappa_test)
-        # EACH_ACC_ALL.append(Acc_test)
-
-        # torch.cuda.empty_cache()
-
-    OA_ALL = np.array(OA_ALL)
-    AA_ALL = np.array(AA_ALL)
-    KPP_ALL = np.array(KPP_ALL)
-    EACH_ACC_ALL = np.array(EACH_ACC_ALL)
-    Train_Time_ALL = np.array(Train_Time_ALL)
-    Test_Time_ALL = np.array(Test_Time_ALL)
-
-    np.set_printoptions(precision=4)
-    logger.info(
-        "\n====================Mean result of {} times runs =========================".format(
-            len(seed_list)
-        )
-    )
-    logger.info("List of OA:", list(OA_ALL))
-    logger.info("List of AA:", list(AA_ALL))
-    logger.info("List of KPP:", list(KPP_ALL))
-    logger.info(
-        "OA=", round(np.mean(OA_ALL) * 100, 2), "+-", round(np.std(OA_ALL) * 100, 2)
-    )
-    logger.info(
-        "AA=", round(np.mean(AA_ALL) * 100, 2), "+-", round(np.std(AA_ALL) * 100, 2)
-    )
-    logger.info(
-        "Kpp=", round(np.mean(KPP_ALL) * 100, 2), "+-", round(np.std(KPP_ALL) * 100, 2)
-    )
-    logger.info(
-        "Acc per class=",
-        np.round(np.mean(EACH_ACC_ALL, 0) * 100, decimals=2),
-        "+-",
-        np.round(np.std(EACH_ACC_ALL, 0) * 100, decimals=2),
-    )
-
-    logger.info(
-        "Average training time=",
-        round(np.mean(Train_Time_ALL), 2),
-        "+-",
-        round(np.std(Train_Time_ALL), 3),
-    )
-    logger.info(
-        "Average testing time=",
-        round(np.mean(Test_Time_ALL) * 1000, 2),
-        "+-",
-        round(np.std(Test_Time_ALL) * 1000, 3),
-    )
-
-    # Output infors
-    mean_result_path = os.path.join(save_folder, "mean_result.txt")
-    f = open(mean_result_path, "w")
-    str_results = (
-        "\n\n***************Mean result of "
-        + str(len(seed_list))
-        + "times runs ********************"
-        + "\nList of OA:"
-        + str(list(OA_ALL))
-        + "\nList of AA:"
-        + str(list(AA_ALL))
-        + "\nList of KPP:"
-        + str(list(KPP_ALL))
-        + "\nOA="
-        + str(round(np.mean(OA_ALL) * 100, 2))
-        + "+-"
-        + str(round(np.std(OA_ALL) * 100, 2))
-        + "\nAA="
-        + str(round(np.mean(AA_ALL) * 100, 2))
-        + "+-"
-        + str(round(np.std(AA_ALL) * 100, 2))
-        + "\nKpp="
-        + str(round(np.mean(KPP_ALL) * 100, 2))
-        + "+-"
-        + str(round(np.std(KPP_ALL) * 100, 2))
-        + "\nAcc per class=\n"
-        + str(np.round(np.mean(EACH_ACC_ALL, 0) * 100, 2))
-        + "+-"
-        + str(np.round(np.std(EACH_ACC_ALL, 0) * 100, 2))
-        + "\nAverage training time="
-        + str(np.round(np.mean(Train_Time_ALL), decimals=2))
-        + "+-"
-        + str(np.round(np.std(Train_Time_ALL), decimals=3))
-        + "\nAverage testing time="
-        + str(np.round(np.mean(Test_Time_ALL) * 1000, decimals=2))
-        + "+-"
-        + str(np.round(np.std(Test_Time_ALL) * 100, decimals=3))
-    )
-    f.write(str_results)
-    f.close()
+        vis_a_image(gt, result["predict"], predict_save_path, gt_save_path)
 
     del net
 

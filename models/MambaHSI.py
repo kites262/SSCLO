@@ -69,7 +69,7 @@ class SpaMamba(nn.Module):
     def forward(self, x):
         x_re = x.permute(0, 2, 3, 1).contiguous()
         B, H, W, C = x_re.shape
-        x_flat = x_re.view(1, -1, C)
+        x_flat = x_re.view(B, -1, C)
         x_flat = self.mamba(x_flat)
 
         x_recon = x_flat.view(B, H, W, C)

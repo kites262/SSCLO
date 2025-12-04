@@ -1,4 +1,9 @@
 import numpy as np
+import swanlab
+import torch
+from loguru import logger
+
+from utils.Loss import resize
 
 
 class Evaluator(object):
@@ -79,3 +84,67 @@ class Evaluator(object):
 
     def reset(self):
         self.confusion_matrix = np.zeros((self.num_class,) * 2)
+
+    def eval_and_log(self, net, x, label, epoch):
+        return eval_and_log(self, net, x, label, epoch)
+
+
+def eval_and_log(
+    evaluator: Evaluator,
+    net,
+    x,
+    label,
+    epoch,
+):
+    net.eval()
+    with torch.no_grad():
+        evaluator.reset()
+
+        y = label.unsqueeze(0)
+        output = net(x)
+
+        seg_logits = resize(
+            input=output,
+            size=y.shape[1:],  # H, W
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        predict = torch.argmax(seg_logits, dim=1).cpu().numpy()
+        y_np = label.cpu().numpy()
+        y_255 = np.where(y_np == -1, 255, y_np)
+
+        evaluator.add_batch(np.expand_dims(y_255, axis=0), predict)
+
+        OA = evaluator.Pixel_Accuracy()
+        mIOU, IOU = evaluator.Mean_Intersection_over_Union()
+        mAcc, Acc = evaluator.Pixel_Accuracy_Class()
+        Kappa = evaluator.Kappa()
+
+        logger.debug(f"OA: {OA} | mAcc: {mAcc} | Kappa: {Kappa} | mIOU: {mIOU}")
+        logger.debug(f"Acc: {Acc}")
+        logger.debug(f"IOU: {IOU.tolist()}")
+        logger.info(
+            f"Epoch {epoch} | OA {OA:.4f} | mAcc {mAcc:.4f} | Kappa {Kappa:.4f} | mIOU {mIOU:.4f}"
+        )
+        # epoch = -1 means test stage
+        if epoch != -1:
+            swanlab.log(
+                {
+                    "val/OA": OA,
+                    "val/mAcc": mAcc,
+                    "val/Kappa": Kappa,
+                    "val/mIOU": mIOU,
+                },
+                step=epoch,
+            )
+
+        return {
+            "OA": OA,
+            "mAcc": mAcc,
+            "Kappa": Kappa,
+            "mIOU": mIOU,
+            "predict": predict,
+            "IOU": IOU,
+            "Acc": Acc,
+        }

@@ -1,0 +1,139 @@
+2025-12-04 20:24:42.746 | INFO   | 74   > MambaHSI_HanChuan
+2025-12-04 20:24:46.329 | INFO   | 131  > MambaHSI(
+  (patch_embedding): Sequential(
+    (0): Conv2d(274, 128, kernel_size=(1, 1), stride=(1, 1))
+    (1): GroupNorm(4, 128, eps=1e-05, affine=True)
+    (2): SiLU()
+  )
+  (mamba): Sequential(
+    (0): BothMamba(
+      (softmax): Softmax(dim=0)
+      (spa_mamba): SpaMamba(
+        (mamba): Mamba(
+          (in_proj): Linear(in_features=128, out_features=512, bias=False)
+          (conv1d): Conv1d(256, 256, kernel_size=(4,), stride=(1,), padding=(3,), groups=256)
+          (act): SiLU()
+          (x_proj): Linear(in_features=256, out_features=40, bias=False)
+          (dt_proj): Linear(in_features=8, out_features=256, bias=True)
+          (out_proj): Linear(in_features=256, out_features=128, bias=False)
+        )
+        (proj): Sequential(
+          (0): GroupNorm(4, 128, eps=1e-05, affine=True)
+          (1): SiLU()
+        )
+      )
+      (spe_mamba): SpeMamba(
+        (mamba): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (proj): Sequential(
+          (0): GroupNorm(4, 128, eps=1e-05, affine=True)
+          (1): SiLU()
+        )
+      )
+    )
+    (1): AvgPool2d(kernel_size=2, stride=2, padding=0)
+    (2): BothMamba(
+      (softmax): Softmax(dim=0)
+      (spa_mamba): SpaMamba(
+        (mamba): Mamba(
+          (in_proj): Linear(in_features=128, out_features=512, bias=False)
+          (conv1d): Conv1d(256, 256, kernel_size=(4,), stride=(1,), padding=(3,), groups=256)
+          (act): SiLU()
+          (x_proj): Linear(in_features=256, out_features=40, bias=False)
+          (dt_proj): Linear(in_features=8, out_features=256, bias=True)
+          (out_proj): Linear(in_features=256, out_features=128, bias=False)
+        )
+        (proj): Sequential(
+          (0): GroupNorm(4, 128, eps=1e-05, affine=True)
+          (1): SiLU()
+        )
+      )
+      (spe_mamba): SpeMamba(
+        (mamba): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (proj): Sequential(
+          (0): GroupNorm(4, 128, eps=1e-05, affine=True)
+          (1): SiLU()
+        )
+      )
+    )
+    (3): AvgPool2d(kernel_size=2, stride=2, padding=0)
+    (4): BothMamba(
+      (softmax): Softmax(dim=0)
+      (spa_mamba): SpaMamba(
+        (mamba): Mamba(
+          (in_proj): Linear(in_features=128, out_features=512, bias=False)
+          (conv1d): Conv1d(256, 256, kernel_size=(4,), stride=(1,), padding=(3,), groups=256)
+          (act): SiLU()
+          (x_proj): Linear(in_features=256, out_features=40, bias=False)
+          (dt_proj): Linear(in_features=8, out_features=256, bias=True)
+          (out_proj): Linear(in_features=256, out_features=128, bias=False)
+        )
+        (proj): Sequential(
+          (0): GroupNorm(4, 128, eps=1e-05, affine=True)
+          (1): SiLU()
+        )
+      )
+      (spe_mamba): SpeMamba(
+        (mamba): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (proj): Sequential(
+          (0): GroupNorm(4, 128, eps=1e-05, affine=True)
+          (1): SiLU()
+        )
+      )
+    )
+  )
+  (cls_head): Sequential(
+    (0): Conv2d(128, 128, kernel_size=(1, 1), stride=(1, 1))
+    (1): GroupNorm(4, 128, eps=1e-05, affine=True)
+    (2): SiLU()
+    (3): Conv2d(128, 16, kernel_size=(1, 1), stride=(1, 1))
+  )
+)
+2025-12-04 20:24:46.608 | INFO   | 148  > Adam (
+Parameter Group 0
+    amsgrad: False
+    betas: (0.9, 0.999)
+    capturable: False
+    decoupled_weight_decay: False
+    differentiable: False
+    eps: 1e-08
+    foreach: None
+    fused: None
+    lr: 0.0003
+    maximize: False
+    weight_decay: 0
+)
+2025-12-04 20:24:47.636 | DEBUG  | 177  > epoch 0
+2025-12-04 20:24:47.636 | DEBUG  | 178  > loss 5.710597991943359
+2025-12-04 20:24:47.799 | DEBUG  | 124  > OA: 0.1625 | mAcc: 0.1625 | Kappa: 0.10666666666666667 | mIOU: 0.047303645102940876
+2025-12-04 20:24:47.800 | DEBUG  | 125  > Acc: [0.  0.5 0.7 0.  0.  0.  0.  0.  0.  0.  0.  0.5 0.  0.  0.9 0. ]
+2025-12-04 20:24:47.800 | DEBUG  | 126  > IOU: [0.0, 0.1111111111111111, 0.3181818181818182, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.07042253521126761, 0.0, 0.0, 0.2571428571428571, 0.0]
+2025-12-04 20:24:47.800 | INFO   | 127  > Epoch 0 | OA 0.1625 | mAcc 0.1625 | Kappa 0.1067 | mIOU 0.0473
+2025-12-04 20:24:48.493 | DEBUG  | 177  > epoch 1
+2025-12-04 20:24:48.493 | DEBUG  | 178  > loss 5.3441057205200195
+2025-12-04 20:24:48.655 | DEBUG  | 124  > OA: 0.11875 | mAcc: 0.11875 | Kappa: 0.05999999999999999 | mIOU: 0.026961238388477193
+2025-12-04 20:24:48.655 | DEBUG  | 125  > Acc: [0.  0.5 0.1 0.  0.  0.  0.  0.  0.  0.  0.  0.4 0.  0.  0.9 0. ]
+2025-12-04 20:24:48.655 | DEBUG  | 126  > IOU: [0.0, 0.09090909090909091, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.05970149253731343, 0.0, 0.0, 0.23076923076923078, 0.0]
+2025-12-04 20:24:48.655 | INFO   | 127  > Epoch 1 | OA 0.1187 | mAcc 0.1187 | Kappa 0.0600 | mIOU 0.0270
+2025-12-04 20:24:48.664 | INFO   | 209  > ==== Stage Test ====
+2025-12-04 20:24:48.664 | INFO   | 212  > No best model found
