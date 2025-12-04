@@ -1,6 +1,7 @@
 RUNS/
 data/
 images/
+output/
 
 *.pyc
 __pycache__/

@@ -1,0 +1,5 @@
+model_name: "asPatchEmbedding"
+
+instance:
+  _target_: models.MambaFNO.v1.model.MambaFNO_Head
+  embedding_channels: 128

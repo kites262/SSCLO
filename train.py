@@ -1,39 +1,22 @@
-import argparse
 import os
 import random
 
-# os.environ['CUDA_VISIBLE_DEVICES']='6'
-import time
-
+import hydra
 import numpy as np
 import swanlab
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig, OmegaConf
 from torchvision import transforms
 
 import utils.data_load_operate as data_load_operate
-from model.MambaHSIFNO import MambaHSIFNO
 from utils.evaluation import Evaluator
 from utils.HSICommonUtils import ImageStretching
 from utils.Loss import head_loss, resize
-
-# import matplotlib.pyplot as plt
-# from visual.visualize_map import DrawResult
 from utils.setup_logger import setup_logger
 from utils.visual_predict import visualize_predict
 
-torch.autograd.set_detect_anomaly(True)  # type: ignore
-
-time_current = time.strftime("%y-%m-%d-%H.%M", time.localtime())
-
-swanlab.init(
-    project="MambaHSI",
-    workspace="kites",
-    experiment_name="gFNO patch_embedding@128",
-    config={
-        "type": "gFNO",
-        "layer": "patch_embedding@128",
-    },
-)
+torch.autograd.set_detect_anomaly(True)
 
 
 def vis_a_image(
@@ -59,111 +42,80 @@ def vis_a_image(
     )
 
 
-# random seed setting
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.deterministic = True  # type: ignore
-    torch.backends.cudnn.benchmark = False  # type: ignore
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
-def get_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_index", type=int, default=1)
-    parser.add_argument("--data_set_path", type=str, default="./data")
-    parser.add_argument("--work_dir", type=str, default="./")
-    parser.add_argument("--lr", type=float, default=0.0003)
-    parser.add_argument("--max_epoch", type=int, default=200)
-    parser.add_argument("--train_samples", type=int, default=30)
-    parser.add_argument("--val_samples", type=int, default=10)
-    parser.add_argument("--exp_name", type=str, default="RUNS")
+@hydra.main(config_path="conf", config_name="config", version_base=None)
+def train(cfg: DictConfig) -> None:
+    device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+    config_dict = OmegaConf.to_container(cfg, resolve=True)
+    assert isinstance(config_dict, dict)
 
-    args = parser.parse_args()
-    return args
+    swanlab_mode = cfg.swanlab_mode
 
+    swanlab.init(
+        project="MambaHSI",
+        workspace="kites",
+        experiment_name="baseline",
+        config=config_dict,
+        mode=swanlab_mode,
+    )
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-args = get_parser()
+    seed_list = [0]
 
-exp_name = args.exp_name
-# seed_list = [0,1,2,3,4,5,6,7,8,9]  #
-seed_list = [0]  #
+    train_samples = cfg.train_samples
+    val_samples = cfg.val_samples
 
-num_list = [args.train_samples, args.val_samples]
+    max_epochs = cfg.max_epochs
+    learning_rate = cfg.learning_rate
 
-dataset_index = args.dataset_index
+    split_image = cfg.split_image
 
-max_epoch = args.max_epoch
-learning_rate = args.lr
+    model_name = cfg.model.model_name
+    dataset_name = cfg.dataset_name
 
-net_name = "MambaHSIFNO"
+    # if data_set_name in ["HanChuan", "Houston"]:
+    #     split_image = True
+    # else:
+    #     split_image = False
 
-paras_dict = {
-    "net_name": net_name,
-    "dataset_index": dataset_index,
-    "num_list": num_list,
-    "lr": learning_rate,
-    "seed_list": seed_list,
-}
+    transform = transforms.Compose(
+        [
+            # transforms.Resize((2048, 1024)),
+            transforms.ToTensor(),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # transforms.Normalize(mean=[123.6750, 116.2800, 103.5300], std=[58.395, 57.120, 57.3750]),
+        ]
+    )
 
-
-# 0        1         2         3        4
-data_set_name_list = ["UP", "HanChuan", "HongHu", "Houston"]
-data_set_name = data_set_name_list[dataset_index]
-
-if data_set_name in ["HanChuan", "Houston"]:
-    split_image = True
-else:
-    split_image = False
-split_image = False  # Remove indirect variable
-
-transform = transforms.Compose(
-    [
-        # transforms.Resize((2048, 1024)),
-        transforms.ToTensor(),
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        # transforms.Normalize(mean=[123.6750, 116.2800, 103.5300], std=[58.395, 57.120, 57.3750]),
-    ]
-)
-
-
-if __name__ == "__main__":
-    data_set_path = args.data_set_path
-    work_dir = args.work_dir
-    setting_name = "tr{}val{}".format(
-        str(args.train_samples), str(args.val_samples)
-    ) + "_lr{}".format(str(learning_rate))
-
-    dataset_name = data_set_name
-
-    exp_name = args.exp_name
-
-    save_folder = os.path.join(work_dir, exp_name, net_name, dataset_name)
-
-    if not os.path.exists(save_folder):
-        os.makedirs(save_folder)
-        print("makedirs {}".format(save_folder))
+    dataset_path = cfg.data_dir
+    save_folder = f"{model_name}_{dataset_name}"
+    os.makedirs(save_folder, exist_ok=True)
 
     save_log_path = os.path.join(
-        save_folder, "train_tr{}_val{}.log".format(num_list[0], num_list[1])
+        save_folder, "train_tr{}_val{}.log".format(train_samples, val_samples)
     )
     logger = setup_logger(name="{}".format(dataset_name), logfile=save_log_path)
     torch.cuda.empty_cache()
 
     logger.info(save_folder)
 
-    data, gt = data_load_operate.load_data(data_set_name, data_set_path)
+    data, gt = data_load_operate.load_data(dataset_name, dataset_path)
 
-    height, width, channels = data.shape
+    data_height, data_width, data_channels = data.shape
 
     gt_reshape = gt.reshape(-1)
-    height, width, channels = data.shape
+    data_height, data_width, data_channels = data.shape
     img = ImageStretching(data)
 
-    class_count = max(np.unique(gt))
+    class_count = int(max(np.unique(gt)))
 
     flag_list = [1, 0]  # ratio or num
     ratio_list = [0.1, 0.01]  # [train_ratio,val_ratio]
@@ -177,7 +129,6 @@ if __name__ == "__main__":
     EACH_ACC_ALL = []
     Train_Time_ALL = []
     Test_Time_ALL = []
-    CLASS_ACC = np.zeros([len(seed_list), class_count])
     evaluator = Evaluator(num_class=class_count)
 
     for exp_idx, curr_seed in enumerate(seed_list):
@@ -191,41 +142,45 @@ if __name__ == "__main__":
         save_vis_folder = os.path.join(save_single_experiment_folder, "vis")
         if not os.path.exists(save_vis_folder):
             os.makedirs(save_vis_folder)
-            print("makedirs {}".format(save_vis_folder))
 
         save_weight_path = os.path.join(
             save_single_experiment_folder,
-            "best_tr{}_val{}.pth".format(num_list[0], num_list[1]),
+            "best_tr{}_val{}.pth".format(train_samples, val_samples),
         )
-        results_save_path = os.path.join(
-            save_single_experiment_folder,
-            "result_tr{}_val{}.txt".format(num_list[0], num_list[1]),
-        )
-        predict_save_path = os.path.join(
-            save_single_experiment_folder,
-            "pred_vis_tr{}_val{}.png".format(num_list[0], num_list[1]),
-        )
-        gt_save_path = os.path.join(
-            save_single_experiment_folder,
-            "gt_vis_tr{}_val{}.png".format(num_list[0], num_list[1]),
-        )
+        # results_save_path = os.path.join(
+        #     save_single_experiment_folder,
+        #     "result_tr{}_val{}.txt".format(train_samples, val_samples),
+        # )
+        # predict_save_path = os.path.join(
+        #     save_single_experiment_folder,
+        #     "pred_vis_tr{}_val{}.png".format(train_samples, val_samples),
+        # )
+        # gt_save_path = os.path.join(
+        #     save_single_experiment_folder,
+        #     "gt_vis_tr{}_val{}.png".format(train_samples, val_samples),
+        # )
 
         train_data_index, val_data_index, test_data_index, all_data_index = (
             data_load_operate.sampling(
-                ratio_list, num_list, gt_reshape, class_count, flag_list[0]
+                ratio_list,
+                [train_samples, val_samples],
+                gt_reshape,
+                class_count,
+                flag_list[0],
             )
         )
         index = (train_data_index, val_data_index, test_data_index)
         train_label, val_label, test_label = data_load_operate.generate_image_iter(
-            data, height, width, gt_reshape, index
+            data, data_height, data_width, gt_reshape, index
         )
 
         # build Model
 
-        net = MambaHSIFNO(
-            in_channels=channels, num_classes=class_count, embedding_channels=128
+        net = instantiate(
+            cfg.model.instance,
+            in_channels=data_channels,
+            num_classes=class_count,
         )
-        logger.info(paras_dict)
         logger.info(net)
 
         x = transform(np.array(img))
@@ -241,26 +196,15 @@ if __name__ == "__main__":
 
         net.to(device)
 
-        train_loss_list = [100]
-        train_acc_list = [0]
-        val_loss_list = [100]
-        val_acc_list = [0]
-
         optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
 
         logger.info(optimizer)
-        best_loss = 99999
 
-        tic1 = time.perf_counter()
         best_val_acc = 0
 
         epoch = 0
-        for epoch in range(max_epoch):
+        for epoch in range(max_epochs):
             y_train = train_label.unsqueeze(0)
-            train_acc_sum, trained_samples_counter = 0.0, 0
-            batch_counter, train_loss_sum = 0, 0
-            time_epoch = time.time()
-            loss_dict = {}
 
             net.train()
 
@@ -294,8 +238,8 @@ if __name__ == "__main__":
                 ls.backward()
                 optimizer.step()
                 loss = ls.detach().cpu().numpy()
-                logger.info("Iter:{}|loss:{}".format(epoch, loss))
                 swanlab.log({"train/loss": loss}, step=epoch)
+                logger.info("Iter:{}|loss:{}".format(epoch, loss))
 
             torch.cuda.empty_cache()
             # evaluate stage
@@ -335,7 +279,6 @@ if __name__ == "__main__":
                 )
                 # save weight
                 if OA >= best_val_acc:
-                    best_epoch = epoch + 1
                     best_val_acc = OA
                     # torch.save(net,save_weight_path)
                     torch.save(net.state_dict(), save_weight_path)
@@ -353,98 +296,96 @@ if __name__ == "__main__":
                 # net.train()
             torch.cuda.empty_cache()
 
-        logger.info(
-            "\n\n====================Starting evaluation for testing set.========================\n"
-        )
-        pred_test = []
+        # logger.info(
+        #     "\n\n====================Starting evaluation for testing set.========================\n"
+        # )
 
-        load_weight_path = save_weight_path
-        net.update_params = None  # type: ignore
-        # best_net = copy.deepcopy(net)
-        best_net = MambaHSIFNO(
-            in_channels=channels, num_classes=class_count, embedding_channels=128
-        ).to(device)
-        _ = best_net(x)
+        # load_weight_path = save_weight_path
+        # net.update_params = None  # type: ignore
+        # # best_net = copy.deepcopy(net)
+        # best_net = MambaHSI(
+        #     in_channels=channels, num_classes=class_count, hidden_dim=128
+        # )
 
-        best_net.to(device)
-        best_net.load_state_dict(torch.load(load_weight_path))
-        best_net.eval()
-        test_evaluator = Evaluator(num_class=class_count)
-        with torch.no_grad():
-            test_evaluator.reset()
-            output_test = best_net(x)
+        # best_net.to(device)
+        # best_net.load_state_dict(torch.load(load_weight_path))
+        # best_net.eval()
+        # test_evaluator = Evaluator(num_class=class_count)
+        # with torch.no_grad():
+        #     test_evaluator.reset()
+        #     output_test = best_net(x)
 
-            y_test = test_label.unsqueeze(0)
-            seg_logits_test = resize(
-                input=output_test,
-                size=y_test.shape[1:],
-                mode="bilinear",
-                align_corners=True,
-            )
-            predict_test = torch.argmax(seg_logits_test, dim=1).cpu().numpy()
-            Y_test_np = test_label.cpu().numpy()
-            Y_test_255 = np.where(Y_test_np == -1, 255, Y_test_np)
-            test_evaluator.add_batch(np.expand_dims(Y_test_255, axis=0), predict_test)
-            OA_test = test_evaluator.Pixel_Accuracy()
-            mIOU_test, IOU_test = test_evaluator.Mean_Intersection_over_Union()
-            mAcc_test, Acc_test = test_evaluator.Pixel_Accuracy_Class()
-            Kappa_test = evaluator.Kappa()
-            logger.info(
-                "Test {}|OA:{}|MACC:{}|Kappa:{}|MIOU:{}|IOU:{}|ACC:{}".format(
-                    epoch, OA_test, mAcc_test, Kappa_test, mIOU_test, IOU_test, Acc_test
-                )
-            )
-            swanlab.log(
-                {
-                    "test/OA": OA_test,
-                    "test/mAcc": mAcc_test,
-                    "test/Kappa": Kappa_test,
-                    "test/mIOU": mIOU_test,
-                },
-                step=epoch,
-            )
-            vis_a_image(gt, predict_test, predict_save_path, gt_save_path)
-        # Output infors
-        f = open(results_save_path, "a+")
-        str_results = (
-            "\n======================"
-            + " exp_idx="
-            + str(exp_idx)
-            + " seed="
-            + str(curr_seed)
-            + " learning rate="
-            + str(learning_rate)
-            + " epochs="
-            + str(max_epoch)
-            + " train ratio="
-            + str(ratio_list[0])
-            + " val ratio="
-            + str(ratio_list[1])
-            + " ======================"
-            + "\nOA="
-            + str(OA_test)
-            + "\nAA="
-            + str(mAcc_test)
-            + "\nkpp="
-            + str(Kappa_test)
-            + "\nmIOU_test:"
-            + str(mIOU_test)
-            + "\nIOU_test:"
-            + str(IOU_test)
-            + "\nAcc_test:"
-            + str(Acc_test)
-            + "\n"
-        )
-        logger.info(str_results)
-        f.write(str_results)
-        f.close()
+        #     y_test = test_label.unsqueeze(0)
+        #     seg_logits_test = resize(
+        #         input=output_test,
+        #         size=y_test.shape[1:],
+        #         mode="bilinear",
+        #         align_corners=True,
+        #     )
+        #     predict_test = torch.argmax(seg_logits_test, dim=1).cpu().numpy()
+        #     Y_test_np = test_label.cpu().numpy()
+        #     Y_test_255 = np.where(Y_test_np == -1, 255, Y_test_np)
+        #     test_evaluator.add_batch(np.expand_dims(Y_test_255, axis=0), predict_test)
+        #     OA_test = test_evaluator.Pixel_Accuracy()
+        #     mIOU_test, IOU_test = test_evaluator.Mean_Intersection_over_Union()
+        #     mAcc_test, Acc_test = test_evaluator.Pixel_Accuracy_Class()
+        #     Kappa_test = evaluator.Kappa()
+        #     logger.info(
+        #         "Test {}|OA:{}|MACC:{}|Kappa:{}|MIOU:{}|IOU:{}|ACC:{}".format(
+        #             epoch, OA_test, mAcc_test, Kappa_test, mIOU_test, IOU_test, Acc_test
+        #         )
+        #     )
+        #     swanlab.log(
+        #         {
+        #             "test/OA": OA_test,
+        #             "test/mAcc": mAcc_test,
+        #             "test/Kappa": Kappa_test,
+        #             "test/mIOU": mIOU_test,
+        #         },
+        #         step=epoch,
+        #     )
+        #     vis_a_image(gt, predict_test, predict_save_path, gt_save_path)
+        # # Output infors
+        # f = open(results_save_path, "a+")
+        # str_results = (
+        #     "\n======================"
+        #     + " exp_idx="
+        #     + str(exp_idx)
+        #     + " seed="
+        #     + str(curr_seed)
+        #     + " learning rate="
+        #     + str(learning_rate)
+        #     + " epochs="
+        #     + str(max_epochs)
+        #     + " train ratio="
+        #     + str(ratio_list[0])
+        #     + " val ratio="
+        #     + str(ratio_list[1])
+        #     + " ======================"
+        #     + "\nOA="
+        #     + str(OA_test)
+        #     + "\nAA="
+        #     + str(mAcc_test)
+        #     + "\nkpp="
+        #     + str(Kappa_test)
+        #     + "\nmIOU_test:"
+        #     + str(mIOU_test)
+        #     + "\nIOU_test:"
+        #     + str(IOU_test)
+        #     + "\nAcc_test:"
+        #     + str(Acc_test)
+        #     + "\n"
+        # )
+        # logger.info(str_results)
+        # f.write(str_results)
+        # f.close()
 
-        OA_ALL.append(OA_test)
-        AA_ALL.append(mAcc_test)
-        KPP_ALL.append(Kappa_test)
-        EACH_ACC_ALL.append(Acc_test)
+        # OA_ALL.append(OA_test)
+        # AA_ALL.append(mAcc_test)
+        # KPP_ALL.append(Kappa_test)
+        # EACH_ACC_ALL.append(Acc_test)
 
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
     OA_ALL = np.array(OA_ALL)
     AA_ALL = np.array(AA_ALL)
@@ -533,3 +474,7 @@ if __name__ == "__main__":
     f.close()
 
     del net
+
+
+if __name__ == "__main__":
+    train()
