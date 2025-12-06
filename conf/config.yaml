@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - model: baseline
+  - exp: baseline
 
 # ["HanChuan", "HongHu"]
 dataset_name: "HanChuan"
@@ -12,10 +12,10 @@ train_samples: 30
 val_samples: 10
 
 seed: 42
-max_epochs: 200
-learning_rate: 0.0003
+epoch: 2
+lr: 0.0003
 
-split_image: true
+split_image: false
 
 swanlab: "offline"
 

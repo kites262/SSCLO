@@ -4,6 +4,7 @@ import hydra
 import numpy as np
 import swanlab
 import torch
+from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
@@ -21,35 +22,37 @@ from utils.visual_predict import vis_a_image
 # torch.autograd.set_detect_anomaly(True)
 
 
-@hydra.main(config_path="conf", config_name="config", version_base=None)
+@hydra.main(config_path="conf", config_name="config", version_base="1.2")
 def train(cfg: DictConfig) -> None:
     setup_logger()
     device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
     config_dict = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(config_dict, dict)
 
-    swanlab_mode = cfg.swanlab
-
-    swanlab.init(
-        project="MambaHSI",
-        workspace="kites",
-        experiment_name="baseline",
-        config=config_dict,
-        mode=swanlab_mode,
-    )
-
     seed = cfg.seed
 
     train_samples = cfg.train_samples
     val_samples = cfg.val_samples
 
-    max_epochs = cfg.max_epochs
-    learning_rate = cfg.learning_rate
+    max_epochs = cfg.epoch
+    learning_rate = cfg.lr
 
     split_image = cfg.split_image
 
-    model_name = cfg.model.model_name
+    exp_model_name = cfg.exp.model.name
     dataset_name = cfg.dataset_name
+
+    swanlab_mode = cfg.swanlab
+
+    runtime = HydraConfig.get().runtime.output_dir.split("/")[-1]
+
+    swanlab.init(
+        project="MambaHSI",
+        workspace="kites",
+        experiment_name=f"{exp_model_name}_{runtime}",
+        config=config_dict,
+        mode=swanlab_mode,
+    )
 
     # if data_set_name in ["HanChuan", "Houston"]:
     #     split_image = True
@@ -66,7 +69,7 @@ def train(cfg: DictConfig) -> None:
     )
 
     dataset_path = cfg.data_dir
-    save_folder = f"{model_name}_{dataset_name}"
+    save_folder = f"{exp_model_name}_{dataset_name}"
     os.makedirs(save_folder, exist_ok=True)
 
     torch.cuda.empty_cache()
@@ -86,7 +89,10 @@ def train(cfg: DictConfig) -> None:
     flag_list = [1, 0]  # ratio or num
     ratio_list = [0.1, 0.01]  # [train_ratio,val_ratio]
 
-    loss_func = torch.nn.CrossEntropyLoss(ignore_index=-1)
+    loss_func = torch.nn.CrossEntropyLoss(
+        ignore_index=-1,
+        label_smoothing=cfg.exp.optimizer.label_smoothing,
+    )
     net = None
 
     evaluator = Evaluator(num_class=class_count)
@@ -124,7 +130,7 @@ def train(cfg: DictConfig) -> None:
     )
 
     net = instantiate(
-        cfg.model.instance,
+        cfg.exp.model.instance,
         in_channels=data_channels,
         num_classes=class_count,
     )
@@ -189,12 +195,12 @@ def train(cfg: DictConfig) -> None:
             swanlab.log({"train/loss": loss}, step=epoch)
 
         torch.cuda.empty_cache()
-        result = evaluator.eval_and_log(net, x, val_label, epoch)
+        result = evaluator.eval_and_log(net, x, val_label, epoch, stage="val")
         OA = result["OA"]
         predict = result["predict"]
 
         # save weight
-        if OA >= max(best_val_acc, 0.9):
+        if OA >= max(best_val_acc, 0.90):
             best_val_acc = OA
             torch.save(net.state_dict(), best_model_path)
         if (epoch + 1) % 50 == 0:
@@ -213,7 +219,7 @@ def train(cfg: DictConfig) -> None:
     else:
         net.load_state_dict(torch.load(best_model_path))
         net.to(device)
-        result = evaluator.eval_and_log(net, x, test_label, epoch=-1)
+        result = evaluator.eval_and_log(net, x, test_label, epoch, stage="test")
 
         vis_a_image(gt, result["predict"], predict_save_path, gt_save_path)
 

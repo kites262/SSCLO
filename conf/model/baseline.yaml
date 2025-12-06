@@ -1,4 +1,0 @@
-model_name: "MambaHSI"
-
-instance:
-  _target_: models.MambaHSI.MambaHSI

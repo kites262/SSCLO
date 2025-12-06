@@ -122,14 +122,11 @@ class MambaHSI(nn.Module):
         hidden_dim=128,
         num_classes=10,
         use_residual=True,
-        mamba_type="both",
         token_num=4,
         group_num=4,
         use_att=True,
     ):
-        super(MambaHSI, self).__init__()
-        self.mamba_type = mamba_type
-
+        super().__init__()
         self.patch_embedding = nn.Sequential(
             nn.Conv2d(
                 in_channels=in_channels,
@@ -141,64 +138,31 @@ class MambaHSI(nn.Module):
             nn.GroupNorm(group_num, hidden_dim),
             nn.SiLU(),
         )
-        if mamba_type == "spa":
-            self.mamba = nn.Sequential(
-                SpaMamba(hidden_dim, use_residual=use_residual, group_num=group_num),
-                nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
-                SpaMamba(hidden_dim, use_residual=use_residual, group_num=group_num),
-                nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
-                SpaMamba(hidden_dim, use_residual=use_residual, group_num=group_num),
-            )
-        elif mamba_type == "spe":
-            self.mamba = nn.Sequential(
-                SpeMamba(
-                    hidden_dim,
-                    token_num=token_num,
-                    use_residual=use_residual,
-                    group_num=group_num,
-                ),
-                nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
-                SpeMamba(
-                    hidden_dim,
-                    token_num=token_num,
-                    use_residual=use_residual,
-                    group_num=group_num,
-                ),
-                nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
-                SpeMamba(
-                    hidden_dim,
-                    token_num=token_num,
-                    use_residual=use_residual,
-                    group_num=group_num,
-                ),
-            )
-
-        elif mamba_type == "both":
-            self.mamba = nn.Sequential(
-                BothMamba(
-                    channels=hidden_dim,
-                    token_num=token_num,
-                    use_residual=use_residual,
-                    group_num=group_num,
-                    use_att=use_att,
-                ),
-                nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
-                BothMamba(
-                    channels=hidden_dim,
-                    token_num=token_num,
-                    use_residual=use_residual,
-                    group_num=group_num,
-                    use_att=use_att,
-                ),
-                nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
-                BothMamba(
-                    channels=hidden_dim,
-                    token_num=token_num,
-                    use_residual=use_residual,
-                    group_num=group_num,
-                    use_att=use_att,
-                ),
-            )
+        self.mamba = nn.Sequential(
+            BothMamba(
+                channels=hidden_dim,
+                token_num=token_num,
+                use_residual=use_residual,
+                group_num=group_num,
+                use_att=use_att,
+            ),
+            nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
+            BothMamba(
+                channels=hidden_dim,
+                token_num=token_num,
+                use_residual=use_residual,
+                group_num=group_num,
+                use_att=use_att,
+            ),
+            nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
+            BothMamba(
+                channels=hidden_dim,
+                token_num=token_num,
+                use_residual=use_residual,
+                group_num=group_num,
+                use_att=use_att,
+            ),
+        )
 
         self.cls_head = nn.Sequential(
             nn.Conv2d(

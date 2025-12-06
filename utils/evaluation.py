@@ -85,8 +85,8 @@ class Evaluator(object):
     def reset(self):
         self.confusion_matrix = np.zeros((self.num_class,) * 2)
 
-    def eval_and_log(self, net, x, label, epoch):
-        return eval_and_log(self, net, x, label, epoch)
+    def eval_and_log(self, net, x, label, epoch, stage="val"):
+        return eval_and_log(self, net, x, label, epoch, stage)
 
 
 def eval_and_log(
@@ -95,6 +95,7 @@ def eval_and_log(
     x,
     label,
     epoch,
+    stage,
 ):
     net.eval()
     with torch.no_grad():
@@ -127,17 +128,15 @@ def eval_and_log(
         logger.info(
             f"Epoch {epoch} | OA {OA:.4f} | mAcc {mAcc:.4f} | Kappa {Kappa:.4f} | mIOU {mIOU:.4f}"
         )
-        # epoch = -1 means test stage
-        if epoch != -1:
-            swanlab.log(
-                {
-                    "val/OA": OA,
-                    "val/mAcc": mAcc,
-                    "val/Kappa": Kappa,
-                    "val/mIOU": mIOU,
-                },
-                step=epoch,
-            )
+        swanlab.log(
+            {
+                f"{stage}/OA": OA,
+                f"{stage}/mAcc": mAcc,
+                f"{stage}/Kappa": Kappa,
+                f"{stage}/mIOU": mIOU,
+            },
+            step=epoch,
+        )
 
         return {
             "OA": OA,
