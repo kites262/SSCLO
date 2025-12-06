@@ -3,9 +3,12 @@ from loguru import logger
 
 def setup_logger():
     LOG_FORMAT = (
-        "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-        "<green>{level: <6}</green> | "
-        "<cyan>{line: <4}</cyan> > "
+        "{time:YYYY-MM-DD HH:mm:ss.SSS}"
+        "|"
+        "<green>{level: <6}</green>"
+        "|"
+        "<cyan>{module: <20}</cyan>:<cyan>{line: <4}</cyan>"
+        "> "
         "{message}"
     )
     logger.remove()

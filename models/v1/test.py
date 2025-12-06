@@ -1,10 +1,10 @@
 import torch
 
-from models.MambaFNO.v1.fno import (
+from models.v1.fno import (
     FourierLayer2D,
     FourierNeuralOperator2D,
 )
-from models.MambaFNO.v1.model import MambaFNO_Head
+from models.v1.model import MambaFNO_Head
 from utils.data_load_operate import load_data
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

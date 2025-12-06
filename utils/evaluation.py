@@ -139,11 +139,11 @@ def eval_and_log(
         )
 
         return {
+            "epoch": epoch,
             "OA": OA,
             "mAcc": mAcc,
             "Kappa": Kappa,
             "mIOU": mIOU,
-            "predict": predict,
             "IOU": IOU,
             "Acc": Acc,
-        }
+        }, predict

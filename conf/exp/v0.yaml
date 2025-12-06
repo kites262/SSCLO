@@ -3,5 +3,4 @@ model:
   instance:
     _target_: models.MambaHSI.MambaHSI
 
-optimizer:
-  label_smoothing: 0
+epoch: 200

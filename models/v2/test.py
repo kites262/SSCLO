@@ -1,6 +1,6 @@
 import torch
 
-from models.MambaFNO.v2.fno import FourierLayer2D, FourierNeuralOperator2D
+from models.v2.fno import FourierLayer2D, FourierNeuralOperator2D
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -33,7 +33,7 @@ def test_FourierLayer2D():
 
 
 def test_MambaHSIFNO_AvgPool():
-    from models.MambaFNO.v2.model import MambaFNO_AvgPool
+    from models.v2.model import MambaFNO_AvgPool
 
     x = torch.randn(10, 200, 32, 64).to(device)
     model = MambaFNO_AvgPool(

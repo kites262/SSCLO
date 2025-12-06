@@ -1,7 +1,7 @@
 from torch import nn
 
-from models.MambaFNO.v2.fno import FourierLayer2D
 from models.MambaHSI import BothMamba
+from models.v2.fno import FourierLayer2D
 
 
 class MambaFNO_AvgPool(nn.Module):

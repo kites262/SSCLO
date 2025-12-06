@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import spectral as spy
 from spectral import spy_colors
@@ -21,14 +23,15 @@ def vis_a_image(
     pred_vis,
     save_single_predict_path,
     save_single_gt_path,
-    only_vis_label=False,
 ):
+    os.makedirs(os.path.dirname(save_single_predict_path) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(save_single_gt_path) or ".", exist_ok=True)
     visualize_predict(
         gt_vis,
         pred_vis,
         save_single_predict_path,
         save_single_gt_path,
-        only_vis_label=only_vis_label,
+        only_vis_label=False,
     )
     visualize_predict(
         gt_vis,

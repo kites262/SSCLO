@@ -11,6 +11,7 @@ from omegaconf import DictConfig, OmegaConf
 from torchvision import transforms
 
 import utils.data_load_operate as data_load_operate
+from utils.artifact import save_json_file, save_src_files
 from utils.evaluation import Evaluator
 from utils.HSICommonUtils import ImageStretching
 from utils.logger import setup_logger
@@ -25,22 +26,23 @@ from utils.visual_predict import vis_a_image
 @hydra.main(config_path="conf", config_name="config", version_base="1.2")
 def train(cfg: DictConfig) -> None:
     setup_logger()
+    save_src_files(cfg.root_dir, cfg.exp.src, "src")
     device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
     config_dict = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(config_dict, dict)
 
-    seed = cfg.seed
+    seed = cfg.exp.seed
 
-    train_samples = cfg.train_samples
-    val_samples = cfg.val_samples
+    train_samples = cfg.exp.train_samples
+    val_samples = cfg.exp.val_samples
 
-    max_epochs = cfg.epoch
-    learning_rate = cfg.lr
+    max_epochs = cfg.exp.epoch
+    learning_rate = cfg.exp.lr
 
-    split_image = cfg.split_image
+    split_image = cfg.exp.split_image
 
     exp_model_name = cfg.exp.model.name
-    dataset_name = cfg.dataset_name
+    dataset_name = cfg.exp.dataset_name
 
     swanlab_mode = cfg.swanlab
 
@@ -69,12 +71,8 @@ def train(cfg: DictConfig) -> None:
     )
 
     dataset_path = cfg.data_dir
-    save_folder = f"{exp_model_name}_{dataset_name}"
-    os.makedirs(save_folder, exist_ok=True)
 
     torch.cuda.empty_cache()
-
-    logger.info(save_folder)
 
     data, gt = data_load_operate.load_data(dataset_name, dataset_path)
 
@@ -98,22 +96,6 @@ def train(cfg: DictConfig) -> None:
     evaluator = Evaluator(num_class=class_count)
 
     setup_seed(seed)
-    save_vis_folder = os.path.join(save_folder, "vis")
-    if not os.path.exists(save_vis_folder):
-        os.makedirs(save_vis_folder)
-
-    best_model_path = os.path.join(
-        save_folder,
-        "best_tr{}_val{}.pth".format(train_samples, val_samples),
-    )
-    predict_save_path = os.path.join(
-        save_folder,
-        "pred_vis_tr{}_val{}.png".format(train_samples, val_samples),
-    )
-    gt_save_path = os.path.join(
-        save_folder,
-        "gt_vis_tr{}_val{}.png".format(train_samples, val_samples),
-    )
 
     train_data_index, val_data_index, test_data_index, all_data_index = (
         data_load_operate.sampling(
@@ -134,7 +116,7 @@ def train(cfg: DictConfig) -> None:
         in_channels=data_channels,
         num_classes=class_count,
     )
-    logger.info(net)
+    logger.debug(net)
 
     x = transform(np.array(img))
     x = x.unsqueeze(0).float().to(device)  # type: ignore
@@ -149,13 +131,14 @@ def train(cfg: DictConfig) -> None:
 
     net.to(device)
 
-    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(params=net.parameters(), lr=learning_rate)
 
-    logger.info(optimizer)
+    logger.debug(optimizer)
 
-    best_val_acc = 0
+    best_OA = 0
 
     epoch = 0
+    best_model_path = "best.pth"
     for epoch in range(max_epochs):
         y_train = train_label.unsqueeze(0)
 
@@ -195,20 +178,20 @@ def train(cfg: DictConfig) -> None:
             swanlab.log({"train/loss": loss}, step=epoch)
 
         torch.cuda.empty_cache()
-        result = evaluator.eval_and_log(net, x, val_label, epoch, stage="val")
+        result, predict = evaluator.eval_and_log(net, x, val_label, epoch, stage="val")
         OA = result["OA"]
-        predict = result["predict"]
-
         # save weight
-        if OA >= max(best_val_acc, 0.90):
-            best_val_acc = OA
+        if OA >= max(best_OA, 0.90):
+            best_OA = OA
+            save_json_file(result, "val_best_result.json")
             torch.save(net.state_dict(), best_model_path)
         if (epoch + 1) % 50 == 0:
-            save_single_predict_path = os.path.join(
-                save_vis_folder, "predict_{}.png".format(str(epoch + 1))
+            vis_a_image(
+                gt,
+                predict,
+                f"visualization/val_predict_epoch{epoch + 1}.png",
+                f"visualization/val_gt_epoch{epoch + 1}.png",
             )
-            save_single_gt_path = os.path.join(save_vis_folder, "gt.png")
-            vis_a_image(gt, predict, save_single_predict_path, save_single_gt_path)
 
         torch.cuda.empty_cache()
 
@@ -219,9 +202,17 @@ def train(cfg: DictConfig) -> None:
     else:
         net.load_state_dict(torch.load(best_model_path))
         net.to(device)
-        result = evaluator.eval_and_log(net, x, test_label, epoch, stage="test")
+        result, predict = evaluator.eval_and_log(
+            net, x, test_label, epoch, stage="test"
+        )
+        save_json_file(result, "test_result.json")
 
-        vis_a_image(gt, result["predict"], predict_save_path, gt_save_path)
+        vis_a_image(
+            gt,
+            predict,
+            "test_predict.png",
+            "test_gt.png",
+        )
 
     del net
 

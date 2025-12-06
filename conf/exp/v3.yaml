@@ -1,7 +1,13 @@
 model:
   name: "WaveletDownsampler-As-AvgPool"
   instance:
-    _target_: models.MambaFNO.v3.WaveletDownsampler.WaveletDownsamplerModel
+    _target_: models.v3.WaveletDownsampler.WaveletDownsamplerModel
+
+epoch: 200
 
 optimizer:
   label_smoothing: 0.1
+
+src:
+  - train.py
+  - models/v3/WaveletDownsampler.py

@@ -1,7 +1,7 @@
 from torch import nn
 
-from models.MambaFNO.v1.fno import FourierLayer2D
 from models.MambaHSI import BothMamba
+from models.v1.fno import FourierLayer2D
 
 
 class MambaFNO_Head(nn.Module):

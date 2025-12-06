@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from models.MambaFNO.v3.WaveletDownsampler import (
+from models.v3.WaveletDownsampler import (
     WaveletDownsampler,
     WaveletDownsamplerModel,
 )
