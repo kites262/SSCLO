@@ -127,8 +127,8 @@ class WaveletDownsampler(nn.Module):
         x11 = x[:, :, 1::2, 1::2]
 
         # ll = (x00 + x01 + x10 + x11) / 2
-        lh = (x00 - x11) / 2
-        hl = (x01 - x10) / 2
+        lh = (x00 - x01 + x10 - x11) / 2
+        hl = (x00 + x01 - x10 - x11) / 2
         # hh = (x00 + x11 - x01 - x10) / 2
 
         x_wavelet = torch.cat([lh, hl], dim=1)
