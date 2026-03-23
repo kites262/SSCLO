@@ -1,7 +1,7 @@
 model:
   name: "v4"
   instance:
-    _target_: models.v4.LocalContextEnhancer.Model
+    _target_: models.beta.v4.HybridMambaFusion.Model
 
 epoch: 200
 
@@ -11,4 +11,4 @@ optimizer:
 
 src:
   - train.py
-  - models/v4_2/
+  - models/v4/
