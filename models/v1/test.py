@@ -1,6 +1,10 @@
 import torch
 
-from model.MambaHSIFNO import FourierLayer2D, FourierNeuralOperator2D, MambaHSIFNO
+from models.v1.fno import (
+    FourierLayer2D,
+    FourierNeuralOperator2D,
+)
+from models.v1.model import MambaFNO_Head
 from utils.data_load_operate import load_data
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -10,8 +14,6 @@ def test_FourierNeuralOperator2D():
     fno = FourierNeuralOperator2D(
         in_channels=3,
         out_channels=5,
-        in_y=16,
-        in_x=32,
         reserved_x=10,
         reserved_y=16,
     )
@@ -37,7 +39,9 @@ def test_MambaHSIFNO():
     data = data.to(device)
     _, C, _, _ = data.shape
 
-    model = MambaHSIFNO(in_channels=C, embedding_channels=64, num_classes=10).to(device)
+    model = MambaFNO_Head(in_channels=C, embedding_channels=64, num_classes=10).to(
+        device
+    )
     output = model(data)
     print(f"Output shape: {output.shape}")
 
@@ -50,7 +54,7 @@ def test_MambaHSI():
     data = data.to(device)
     _, C, _, _ = data.shape
 
-    from model.MambaHSI import MambaHSI
+    from models.MambaHSI import MambaHSI
 
     model = MambaHSI(in_channels=C, hidden_dim=64, num_classes=10).to(device)
     output = model(data)
@@ -58,7 +62,7 @@ def test_MambaHSI():
 
 
 if __name__ == "__main__":
-    # test_FourierNeuralOperator2D()
-    # test_FourierLayer2D()
+    test_FourierNeuralOperator2D()
+    test_FourierLayer2D()
     test_MambaHSIFNO()
     # test_MambaHSI()

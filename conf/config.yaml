@@ -1,0 +1,26 @@
+defaults:
+  - _self_
+  - exp: v0
+
+root_dir: ${hydra:runtime.cwd}
+data_dir: ${root_dir}/data
+
+swanlab: "offline"
+
+hydra:
+  job:
+    chdir: true
+
+exp:
+  # ["HanChuan", "HongHu"]
+  dataset_name: "HanChuan"
+  train_samples: 30
+  val_samples: 10
+  seed: 42
+  epoch: 2
+  lr: 3e-4
+  split_image: false
+  src:
+    - train.py
+  optimizer:
+    label_smoothing: 0

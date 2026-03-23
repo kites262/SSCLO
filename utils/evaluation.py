@@ -1,4 +1,9 @@
 import numpy as np
+import swanlab
+import torch
+from loguru import logger
+
+from utils.Loss import resize
 
 
 class Evaluator(object):
@@ -12,7 +17,9 @@ class Evaluator(object):
         ysum = np.sum(self.confusion_matrix, axis=0)  # sum by column
 
         Pe = np.sum(ysum * xsum) * 1.0 / (self.confusion_matrix.sum() ** 2)
-        P0 = np.diag(self.confusion_matrix).sum() / self.confusion_matrix.sum()  # predict right / all the data
+        P0 = (
+            np.diag(self.confusion_matrix).sum() / self.confusion_matrix.sum()
+        )  # predict right / all the data
         cohens_coefficient = (P0 - Pe) / (1 - Pe)
 
         return cohens_coefficient
@@ -37,26 +44,32 @@ class Evaluator(object):
 
     def Mean_Intersection_over_Union(self):
         IoU = np.diag(self.confusion_matrix) / (
-                np.sum(self.confusion_matrix, axis=1) + np.sum(self.confusion_matrix, axis=0) -
-                np.diag(self.confusion_matrix))
+            np.sum(self.confusion_matrix, axis=1)
+            + np.sum(self.confusion_matrix, axis=0)
+            - np.diag(self.confusion_matrix)
+        )
         MIoU = np.nanmean(IoU)
         return MIoU, IoU
 
     def Frequency_Weighted_Intersection_over_Union(self):
         freq = np.sum(self.confusion_matrix, axis=1) / np.sum(self.confusion_matrix)
         iu = np.diag(self.confusion_matrix) / (
-                np.sum(self.confusion_matrix, axis=1) + np.sum(self.confusion_matrix, axis=0) -
-                np.diag(self.confusion_matrix))
+            np.sum(self.confusion_matrix, axis=1)
+            + np.sum(self.confusion_matrix, axis=0)
+            - np.diag(self.confusion_matrix)
+        )
 
         FWIoU = (freq[freq > 0] * iu[freq > 0]).sum()
         return FWIoU
 
     def _generate_matrix(self, gt_image, pre_image):
         # gt_image = batch_size*256*256   pre_image = batch_size*256*256
-        mask = (gt_image >= 0) & (gt_image < self.num_class)  # valid in mask show True, ignored in mask show False
-        label = self.num_class * gt_image[mask].astype('int') + pre_image[mask]
+        mask = (gt_image >= 0) & (
+            gt_image < self.num_class
+        )  # valid in mask show True, ignored in mask show False
+        label = self.num_class * gt_image[mask].astype("int") + pre_image[mask]
         # gt_image[mask] : find out valid pixels. elements with 0,1,2,3 , so label range in  0-15
-        count = np.bincount(label, minlength=self.num_class ** 2)
+        count = np.bincount(label, minlength=self.num_class**2)
         # [0, 1, 2, 3,  confusion_matrix like this:
         #  4, 5, 6, 7,  and if the element is on the diagonal, it means predict the right class.
         #  8, 9, 10,11, row means the real label, column means pred label
@@ -71,3 +84,66 @@ class Evaluator(object):
 
     def reset(self):
         self.confusion_matrix = np.zeros((self.num_class,) * 2)
+
+    def eval_and_log(self, net, x, label, epoch, stage="val"):
+        return eval_and_log(self, net, x, label, epoch, stage)
+
+
+def eval_and_log(
+    evaluator: Evaluator,
+    net,
+    x,
+    label,
+    epoch,
+    stage,
+):
+    net.eval()
+    with torch.no_grad():
+        evaluator.reset()
+
+        y = label.unsqueeze(0)
+        output = net(x)
+
+        seg_logits = resize(
+            input=output,
+            size=y.shape[1:],  # H, W
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        predict = torch.argmax(seg_logits, dim=1).cpu().numpy()
+        y_np = label.cpu().numpy()
+        y_255 = np.where(y_np == -1, 255, y_np)
+
+        evaluator.add_batch(np.expand_dims(y_255, axis=0), predict)
+
+        OA = evaluator.Pixel_Accuracy()
+        mIOU, IOU = evaluator.Mean_Intersection_over_Union()
+        mAcc, Acc = evaluator.Pixel_Accuracy_Class()
+        Kappa = evaluator.Kappa()
+
+        logger.debug(f"OA: {OA} | mAcc: {mAcc} | Kappa: {Kappa} | mIOU: {mIOU}")
+        logger.debug(f"Acc: {Acc}")
+        logger.debug(f"IOU: {IOU.tolist()}")
+        logger.info(
+            f"Epoch {epoch} | OA {OA:.4f} | mAcc {mAcc:.4f} | Kappa {Kappa:.4f} | mIOU {mIOU:.4f}"
+        )
+        swanlab.log(
+            {
+                f"{stage}/OA": OA,
+                f"{stage}/mAcc": mAcc,
+                f"{stage}/Kappa": Kappa,
+                f"{stage}/mIOU": mIOU,
+            },
+            step=epoch,
+        )
+
+        return {
+            "epoch": epoch,
+            "OA": OA,
+            "mAcc": mAcc,
+            "Kappa": Kappa,
+            "mIOU": mIOU,
+            "IOU": IOU,
+            "Acc": Acc,
+        }, predict

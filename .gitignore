@@ -1,3 +1,11 @@
 RUNS/
 data/
+data
 images/
+outputs/
+
+*.pyc
+__pycache__/
+
+typings/
+playground/

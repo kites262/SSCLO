@@ -1,0 +1,6 @@
+model:
+  name: "baseline"
+  instance:
+    _target_: models.MambaHSI.MambaHSI
+
+epoch: 200
