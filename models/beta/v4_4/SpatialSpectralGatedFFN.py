@@ -38,6 +38,11 @@ class Model(nn.Module):
                 group_num=group_num,
                 use_att=use_att,
             ),
+            SpatialSpectralGatedFFN(
+                channels=hidden_dim,
+                expand_ratio=2,
+                group_num=group_num,
+            ),
             WaveletDownsampler(
                 in_channels=hidden_dim,
                 out_channels=hidden_dim,
@@ -48,6 +53,11 @@ class Model(nn.Module):
                 use_residual=use_residual,
                 group_num=group_num,
                 use_att=use_att,
+            ),
+            SpatialSpectralGatedFFN(
+                channels=hidden_dim,
+                expand_ratio=2,
+                group_num=group_num,
             ),
             WaveletDownsampler(
                 in_channels=hidden_dim,
@@ -138,3 +148,58 @@ class WaveletDownsampler(nn.Module):
         x_avg = self.avg_proj(x_avg)
 
         return x_avg + self.gamma * x_wavelet
+
+
+class SpatialSpectralGatedFFN(nn.Module):
+    """
+    放置于 BothMamba 与 Downsampler 之间的改进型串联模块。
+    采用门控机制（GLU）对高光谱特征进行逐像素的动态过滤与空间对齐。
+    """
+
+    def __init__(self, channels, expand_ratio=2, group_num=4):
+        super(SpatialSpectralGatedFFN, self).__init__()
+        hidden_dim = channels * expand_ratio
+
+        self.norm = nn.GroupNorm(group_num, channels)
+
+        # 1. 联合升维 (生成 Value 和 Gate 的混合特征)
+        self.proj_in = nn.Conv2d(channels, hidden_dim * 2, kernel_size=1, bias=False)
+
+        # 2. 局部空间特征提取 (应用到混合特征)
+        self.dwconv = nn.Conv2d(
+            hidden_dim * 2,
+            hidden_dim * 2,
+            kernel_size=3,
+            padding=1,
+            groups=hidden_dim * 2,
+            bias=False,
+        )
+
+        # 3. 门控激活函数
+        self.act = nn.SiLU()
+
+        # 4. 降维输出
+        self.proj_out = nn.Sequential(
+            nn.Conv2d(hidden_dim, channels, kernel_size=1, bias=False),
+            nn.GroupNorm(group_num, channels),
+        )
+
+    def forward(self, x):
+        identity = x
+
+        # 预归一化
+        x_norm = self.norm(x)
+
+        # 光谱映射与空间卷积
+        x_proj = self.proj_in(x_norm)
+        x_spatial = self.dwconv(x_proj)
+
+        # 沿通道维度切分，分离出 Value 和 Gate 分支
+        x_val, x_gate = x_spatial.chunk(2, dim=1)
+
+        # 门控相乘机制
+        x_fused = x_val * self.act(x_gate)
+
+        # 降维并添加残差
+        out = self.proj_out(x_fused)
+        return out + identity

@@ -38,6 +38,11 @@ class Model(nn.Module):
                 group_num=group_num,
                 use_att=use_att,
             ),
+            LocalContextEnhancer(
+                channels=hidden_dim,
+                expand_ratio=2,
+                group_num=group_num,
+            ),
             WaveletDownsampler(
                 in_channels=hidden_dim,
                 out_channels=hidden_dim,
@@ -48,6 +53,11 @@ class Model(nn.Module):
                 use_residual=use_residual,
                 group_num=group_num,
                 use_att=use_att,
+            ),
+            LocalContextEnhancer(
+                channels=hidden_dim,
+                expand_ratio=2,
+                group_num=group_num,
             ),
             WaveletDownsampler(
                 in_channels=hidden_dim,
@@ -138,3 +148,58 @@ class WaveletDownsampler(nn.Module):
         x_avg = self.avg_proj(x_avg)
 
         return x_avg + self.gamma * x_wavelet
+
+
+class LocalContextEnhancer(nn.Module):
+    """
+    放置于 Mamba 与 Downsampler 之间的串联特征细化模块。
+    结合了光谱混合（1x1 Conv）、局部空间上下文恢复（3x3 DWConv）与通道注意力。
+    """
+
+    def __init__(self, channels, expand_ratio=2, group_num=4):
+        super(LocalContextEnhancer, self).__init__()
+        hidden_dim = channels * expand_ratio
+
+        # 1. 光谱特征混合与升维 (Spectral Mixing & Expansion)
+        self.proj_in = nn.Sequential(
+            nn.Conv2d(channels, hidden_dim, kernel_size=1, bias=False),
+            nn.GroupNorm(group_num, hidden_dim),
+            nn.SiLU(),
+        )
+
+        # 2. 局部空间上下文恢复 (Spatial Context Restoration)
+        self.dwconv = nn.Sequential(
+            nn.Conv2d(
+                hidden_dim,
+                hidden_dim,
+                kernel_size=3,
+                padding=1,
+                groups=hidden_dim,
+                bias=False,
+            ),
+            nn.GroupNorm(group_num, hidden_dim),
+            nn.SiLU(),
+        )
+
+        # 3. 通道级特征重标定 (Channel Attention)
+        self.channel_att = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1, bias=False),
+            nn.Sigmoid(),
+        )
+
+        # 4. 降维并投射回原通道 (Linear Projection)
+        self.proj_out = nn.Sequential(
+            nn.Conv2d(hidden_dim, channels, kernel_size=1, bias=False),
+            nn.GroupNorm(group_num, channels),
+        )
+
+    def forward(self, x):
+        identity = x
+
+        x = self.proj_in(x)
+        x = self.dwconv(x)
+        x = x * self.channel_att(x)
+        x = self.proj_out(x)
+
+        return x + identity

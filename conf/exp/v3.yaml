@@ -1,7 +1,7 @@
 model:
   name: "WaveletDownsampler-As-AvgPool"
   instance:
-    _target_: models.v3.WaveletDownsampler.WaveletDownsamplerModel
+    _target_: models.v3.WaveletDownsampler.Model
 
 epoch: 200
 

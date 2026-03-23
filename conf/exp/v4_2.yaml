@@ -1,0 +1,14 @@
+model:
+  name: "v4"
+  instance:
+    _target_: models.v4_2.LocalContextEnhancer.Model
+
+epoch: 200
+
+optimizer:
+  label_smoothing: 0.1
+  weight_decay: 1e-4
+
+src:
+  - train.py
+  - models/v4_2/

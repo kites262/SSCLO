@@ -27,7 +27,7 @@ from utils.visual_predict import vis_a_image
 def train(cfg: DictConfig) -> None:
     setup_logger()
     save_src_files(cfg.root_dir, cfg.exp.src, "src")
-    device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
     config_dict = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(config_dict, dict)
 
@@ -131,7 +131,20 @@ def train(cfg: DictConfig) -> None:
 
     net.to(device)
 
-    optimizer = torch.optim.Adam(params=net.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(
+        params=net.parameters(),
+        lr=learning_rate,
+        weight_decay=cfg.exp.optimizer.weight_decay,
+    )
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="max",
+        factor=0.5,
+        patience=10,
+        threshold=1e-4,
+        min_lr=1e-6,
+    )
 
     logger.debug(optimizer)
 
@@ -179,6 +192,8 @@ def train(cfg: DictConfig) -> None:
 
         torch.cuda.empty_cache()
         result, predict = evaluator.eval_and_log(net, x, val_label, epoch, stage="val")
+        scheduler.step(result["OA"])
+
         OA = result["OA"]
         # save weight
         if OA >= max(best_OA, 0.90):

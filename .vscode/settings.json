@@ -1,0 +1,7 @@
+{
+    "python.analysis.exclude": [
+        "outputs/",
+        "RUNS/",
+        "data/"
+    ]
+}

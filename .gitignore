@@ -6,3 +6,6 @@ outputs/
 
 *.pyc
 __pycache__/
+
+typings/
+playground/
