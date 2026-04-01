@@ -4,7 +4,6 @@ import hydra
 import numpy as np
 import swanlab
 import torch
-from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
@@ -46,12 +45,10 @@ def train(cfg: DictConfig) -> None:
 
     swanlab_mode = cfg.swanlab
 
-    runtime = HydraConfig.get().runtime.output_dir.split("/")[-1]
-
     swanlab.init(
         project="MambaHSI",
         workspace="kites",
-        experiment_name=f"{exp_model_name}_{runtime}",
+        experiment_name=f"{exp_model_name}_{dataset_name}",
         config=config_dict,
         mode=swanlab_mode,
     )

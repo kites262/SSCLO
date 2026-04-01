@@ -11,4 +11,4 @@ optimizer:
 
 src:
   - train.py
-  - models/v4_2/
+  - models/v4/

@@ -24,3 +24,4 @@ exp:
     - train.py
   optimizer:
     label_smoothing: 0
+    weight_decay: 0

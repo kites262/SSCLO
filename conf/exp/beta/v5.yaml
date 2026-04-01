@@ -1,0 +1,18 @@
+model:
+  name: "beta_v5"
+  instance:
+    _target_: models.beta.v5.RegionConsistencyMamba.Model
+    refine_kernel_sizes:
+      - 3
+      - 5
+
+epoch: 200
+
+optimizer:
+  label_smoothing: 0.1
+  weight_decay: 1e-4
+
+src:
+  - train.py
+  - models/beta/v5/
+  - models/v4/

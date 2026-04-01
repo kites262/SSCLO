@@ -1,5 +1,5 @@
 model:
-  name: "v4"
+  name: "beta-v4"
   instance:
     _target_: models.beta.v4.HybridMambaFusion.Model
 
@@ -11,4 +11,4 @@ optimizer:
 
 src:
   - train.py
-  - models/v4/
+  - models/beta/v4/

@@ -1,7 +1,7 @@
 model:
-  name: "beta-v4_3"
+  name: "beta_v5_1"
   instance:
-    _target_: models.beta.v4_3.model.Model
+    _target_: models.beta.v5_1.model.Model
 
 epoch: 200
 
@@ -11,4 +11,4 @@ optimizer:
 
 src:
   - train.py
-  - models/beta/v4_3/
+  - models/beta/v5_1/
