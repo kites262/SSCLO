@@ -13,7 +13,7 @@ hydra:
 
 exp:
   # ["HanChuan", "HongHu"]
-  dataset_name: "HanChuan"
+  dataset: "HanChuan"
   train_samples: 30
   val_samples: 10
   seed: 42
@@ -22,6 +22,7 @@ exp:
   split_image: false
   src:
     - train.py
+    - utils/Loss.py
   optimizer:
     label_smoothing: 0
     weight_decay: 0

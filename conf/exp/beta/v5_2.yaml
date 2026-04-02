@@ -9,6 +9,10 @@ optimizer:
   label_smoothing: 0.1
   weight_decay: 1e-4
 
+loss:
+  instance:
+    _target_: models.beta.v5_2.model.LossCalculator
+
 src:
   - train.py
   - models/beta/v5_2/

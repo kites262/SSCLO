@@ -3,7 +3,7 @@ import swanlab
 import torch
 from loguru import logger
 
-from utils.Loss import resize
+from utils.Loss import resize, unpack_model_output
 
 
 class Evaluator(object):
@@ -103,9 +103,10 @@ def eval_and_log(
 
         y = label.unsqueeze(0)
         output = net(x)
+        logits, _ = unpack_model_output(output)
 
         seg_logits = resize(
-            input=output,
+            input=logits,
             size=y.shape[1:],  # H, W
             mode="bilinear",
             align_corners=False,

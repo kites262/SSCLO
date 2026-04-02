@@ -1,0 +1,19 @@
+model:
+  name: "beta_v5_3"
+  instance:
+    _target_: models.beta.v5_3.Model
+
+epoch: 200
+
+optimizer:
+  label_smoothing: 0.1
+  weight_decay: 1e-4
+
+loss:
+  instance:
+    _target_: models.beta.v5_3.LossCalculator
+
+src:
+  - train.py
+  - models/beta/v5_3.py
+  - utils/Loss.py

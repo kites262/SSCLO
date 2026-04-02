@@ -5,6 +5,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from utils.Loss import resize
+
 try:
     from mamba_ssm import Mamba
 except Exception:
@@ -522,6 +524,111 @@ def edge_target_from_mask(mask: torch.Tensor) -> torch.Tensor:
     edge[:, :, 1:] = torch.maximum(edge[:, :, 1:], dw)
     edge[:, :, :-1] = torch.maximum(edge[:, :, :-1], dw)
     return edge.unsqueeze(1)
+
+
+def compute_loss(
+    logits: torch.Tensor,
+    target: torch.Tensor,
+    aux: Optional[Dict[str, torch.Tensor]] = None,
+    label_smoothing: float = 0.1,
+    tv_weight: float = 0.02,
+    edge_weight: float = 0.05,
+    pre_refine_key: str = "pre_refine_logits",
+    edge_key: str = "edge",
+    edge_prob_eps: float = 1e-4,
+    ignore_index: int = -1,
+) -> torch.Tensor:
+    logits = resize(
+        input=logits,
+        size=target.shape[-2:],
+        mode="bilinear",
+        align_corners=False,
+    )
+    loss = F.cross_entropy(
+        logits,
+        target.long(),
+        label_smoothing=label_smoothing,
+        ignore_index=ignore_index,
+    )
+
+    if tv_weight > 0:
+        ref_logits = aux.get(pre_refine_key, logits) if aux is not None else logits
+        ref_logits = resize(
+            input=ref_logits,
+            size=target.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
+        )
+        loss = loss + tv_weight * total_variation_loss_from_logits(ref_logits)
+
+    if aux is not None and (edge_key in aux) and edge_weight > 0:
+        edge_pred = resize(
+            input=torch.logit(aux[edge_key].clamp(edge_prob_eps, 1 - edge_prob_eps)),
+            size=target.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
+        )
+        edge_target = edge_target_from_mask(target)
+        loss = loss + edge_weight * F.binary_cross_entropy_with_logits(
+            edge_pred,
+            edge_target,
+        )
+
+    return loss
+
+
+class LossCalculator:
+    def __init__(
+        self,
+        label_smoothing: float = 0.1,
+        tv_weight: float = 0.02,
+        edge_weight: float = 0.05,
+        pre_refine_key: str = "pre_refine_logits",
+        edge_key: str = "edge",
+        edge_prob_eps: float = 1e-4,
+        ignore_index: int = -1,
+    ):
+        self.label_smoothing = float(label_smoothing)
+        self.tv_weight = float(tv_weight)
+        self.edge_weight = float(edge_weight)
+        self.pre_refine_key = pre_refine_key
+        self.edge_key = edge_key
+        self.edge_prob_eps = float(edge_prob_eps)
+        self.ignore_index = int(ignore_index)
+
+    def run_model(self, net, x: torch.Tensor):
+        return net(x, return_aux=True)
+
+    def __call__(
+        self,
+        *,
+        loss_func,
+        model_output,
+        label: torch.Tensor,
+    ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
+        del loss_func
+        aux = model_output
+        logits = aux["logits"]
+        total_loss = compute_loss(
+            logits,
+            label,
+            aux=aux,
+            label_smoothing=self.label_smoothing,
+            tv_weight=self.tv_weight,
+            edge_weight=self.edge_weight,
+            pre_refine_key=self.pre_refine_key,
+            edge_key=self.edge_key,
+            edge_prob_eps=self.edge_prob_eps,
+            ignore_index=self.ignore_index,
+        )
+        return {
+            "loss": total_loss,
+            "logits": logits,
+            "aux": aux,
+            "log_items": {
+                "loss": total_loss,
+            },
+        }
 
 
 if __name__ == "__main__":

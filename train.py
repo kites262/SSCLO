@@ -14,7 +14,7 @@ from utils.artifact import save_json_file, save_src_files
 from utils.evaluation import Evaluator
 from utils.HSICommonUtils import ImageStretching
 from utils.logger import setup_logger
-from utils.Loss import head_loss
+from utils.Loss import loss_logs_to_scalars, merge_loss_logs
 from utils.seed import setup_seed
 from utils.visual_predict import vis_a_image
 
@@ -41,14 +41,16 @@ def train(cfg: DictConfig) -> None:
     split_image = cfg.exp.split_image
 
     exp_model_name = cfg.exp.model.name
-    dataset_name = cfg.exp.dataset_name
+    dataset = cfg.exp.dataset
 
     swanlab_mode = cfg.swanlab
+
+    loss_cfg = getattr(cfg.exp, "loss", None)
 
     swanlab.init(
         project="MambaHSI",
         workspace="kites",
-        experiment_name=f"{exp_model_name}_{dataset_name}",
+        experiment_name=f"{exp_model_name}_{dataset}",
         config=config_dict,
         mode=swanlab_mode,
     )
@@ -71,7 +73,7 @@ def train(cfg: DictConfig) -> None:
 
     torch.cuda.empty_cache()
 
-    data, gt = data_load_operate.load_data(dataset_name, dataset_path)
+    data, gt = data_load_operate.load_data(dataset, dataset_path)
 
     data_height, data_width, data_channels = data.shape
 
@@ -88,6 +90,12 @@ def train(cfg: DictConfig) -> None:
         ignore_index=-1,
         label_smoothing=cfg.exp.optimizer.label_smoothing,
     )
+    if loss_cfg is not None and getattr(loss_cfg, "instance", None) is not None:
+        loss_calculator = instantiate(loss_cfg.instance)
+    else:
+        from utils.Loss import CrossEntropyLossCalculator
+
+        loss_calculator = CrossEntropyLossCalculator()
     net = None
 
     evaluator = Evaluator(num_class=class_count)
@@ -144,6 +152,7 @@ def train(cfg: DictConfig) -> None:
     )
 
     logger.debug(optimizer)
+    logger.debug(loss_calculator)
 
     best_OA = 0
 
@@ -158,34 +167,51 @@ def train(cfg: DictConfig) -> None:
             y_part1 = y_train[:, : x.shape[2] // 2 + 5, :]
             x_part2 = x[:, :, x.shape[2] // 2 - 5 :, :]
             y_part2 = y_train[:, x.shape[2] // 2 - 5 :, :]
-            y_pred_part1 = net(x_part1)
-
-            ls1 = head_loss(loss_func, y_pred_part1, y_part1.long())
+            loss_result_part1 = loss_calculator(
+                loss_func=loss_func,
+                model_output=loss_calculator.run_model(net, x_part1),
+                label=y_part1.long(),
+            )
+            ls1 = loss_result_part1["loss"]
             optimizer.zero_grad()
             ls1.backward()
             optimizer.step()
             torch.cuda.empty_cache()
 
-            y_pred_part2 = net(x_part2)
-            ls2 = head_loss(loss_func, y_pred_part2, y_part2.long())
+            loss_result_part2 = loss_calculator(
+                loss_func=loss_func,
+                model_output=loss_calculator.run_model(net, x_part2),
+                label=y_part2.long(),
+            )
+            ls2 = loss_result_part2["loss"]
             optimizer.zero_grad()
             ls2.backward()
             optimizer.step()
             torch.cuda.empty_cache()
-            loss = (ls1 + ls2).detach().cpu().numpy()
+
+            loss_logs = merge_loss_logs(
+                loss_result_part1["log_items"],
+                loss_result_part2["log_items"],
+            )
+            loss = float(loss_logs["loss"].detach().cpu())
             logger.debug(f"epoch {epoch}")
             logger.debug(f"loss {loss}")
-            swanlab.log({"train/loss": loss}, step=epoch)
+            swanlab.log(loss_logs_to_scalars(loss_logs), step=epoch)
         else:
-            y_pred = net(x)
-            ls = head_loss(loss_func, y_pred, y_train.long())
+            loss_result = loss_calculator(
+                loss_func=loss_func,
+                model_output=loss_calculator.run_model(net, x),
+                label=y_train.long(),
+            )
+            ls = loss_result["loss"]
             optimizer.zero_grad()
             ls.backward()
             optimizer.step()
-            loss = ls.detach().cpu().numpy()
+            loss_logs = loss_result["log_items"]
+            loss = float(loss_logs["loss"].detach().cpu())
             logger.debug(f"epoch {epoch}")
             logger.debug(f"loss {loss}")
-            swanlab.log({"train/loss": loss}, step=epoch)
+            swanlab.log(loss_logs_to_scalars(loss_logs), step=epoch)
 
         torch.cuda.empty_cache()
         result, predict = evaluator.eval_and_log(net, x, val_label, epoch, stage="val")
