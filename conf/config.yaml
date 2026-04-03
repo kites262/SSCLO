@@ -26,3 +26,9 @@ exp:
   optimizer:
     label_smoothing: 0
     weight_decay: 0
+  # Optional LR scheduler. If omitted, constant learning rate is used.
+  # lr_scheduler:
+  #   name: "cosine"  # "constant" | "cosine"
+  #   warmup_epochs: 0
+  #   min_lr: 1e-6
+  #   # min_lr_ratio: 0.01

@@ -16,3 +16,8 @@ loss:
 src:
   - train.py
   - models/beta/v5_2/
+
+lr_scheduler:
+  name: "cosine"
+  warmup_epochs: 10
+  min_lr: 1e-6

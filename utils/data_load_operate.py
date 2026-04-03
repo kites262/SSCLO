@@ -43,6 +43,15 @@ def load_data(data_set_name, data_path="./data"):
         labels = sio.loadmat(
             os.path.join(data_path, "HanChuan", "WHU_Hi_HanChuan_gt.mat")
         )["WHU_Hi_HanChuan_gt"]
+    elif data_set_name == "LongKou":
+        data = sio.loadmat(os.path.join(data_path, "LongKou", "WHU_Hi_LongKou.mat"))[
+            "WHU_Hi_LongKou"
+        ]
+        labels = sio.loadmat(
+            os.path.join(data_path, "LongKou", "WHU_Hi_LongKou_gt.mat")
+        )["WHU_Hi_LongKou_gt"]
+    else:
+        raise ValueError("Unsupported dataset: {}".format(data_set_name))
     return data, labels
 
 

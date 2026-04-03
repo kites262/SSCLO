@@ -15,6 +15,7 @@ from utils.evaluation import Evaluator
 from utils.HSICommonUtils import ImageStretching
 from utils.logger import setup_logger
 from utils.Loss import loss_logs_to_scalars, merge_loss_logs
+from utils.lr_scheduler import build_lr_scheduler
 from utils.seed import setup_seed
 from utils.visual_predict import vis_a_image
 
@@ -46,9 +47,10 @@ def train(cfg: DictConfig) -> None:
     swanlab_mode = cfg.swanlab
 
     loss_cfg = getattr(cfg.exp, "loss", None)
+    lr_scheduler_cfg = getattr(cfg.exp, "lr_scheduler", None)
 
     swanlab.init(
-        project="MambaHSI",
+        project="MambaNO",
         workspace="kites",
         experiment_name=f"{exp_model_name}_{dataset}",
         config=config_dict,
@@ -142,17 +144,15 @@ def train(cfg: DictConfig) -> None:
         weight_decay=cfg.exp.optimizer.weight_decay,
     )
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    lr_scheduler = build_lr_scheduler(
         optimizer,
-        mode="max",
-        factor=0.5,
-        patience=10,
-        threshold=1e-4,
-        min_lr=1e-6,
+        lr_scheduler_cfg,
+        total_epochs=max_epochs,
     )
 
     logger.debug(optimizer)
     logger.debug(loss_calculator)
+    logger.debug(lr_scheduler)
 
     best_OA = 0
 
@@ -160,6 +160,8 @@ def train(cfg: DictConfig) -> None:
     best_model_path = "best.pth"
     for epoch in range(max_epochs):
         y_train = train_label.unsqueeze(0)
+        lr_scheduler.step(epoch)
+        current_lr = optimizer.param_groups[0]["lr"]
 
         net.train()
         if split_image:
@@ -193,9 +195,11 @@ def train(cfg: DictConfig) -> None:
                 loss_result_part1["log_items"],
                 loss_result_part2["log_items"],
             )
+            loss_logs["lr"] = current_lr
             loss = float(loss_logs["loss"].detach().cpu())
             logger.debug(f"epoch {epoch}")
             logger.debug(f"loss {loss}")
+            logger.debug(f"lr {current_lr}")
             swanlab.log(loss_logs_to_scalars(loss_logs), step=epoch)
         else:
             loss_result = loss_calculator(
@@ -208,14 +212,15 @@ def train(cfg: DictConfig) -> None:
             ls.backward()
             optimizer.step()
             loss_logs = loss_result["log_items"]
+            loss_logs["lr"] = current_lr
             loss = float(loss_logs["loss"].detach().cpu())
             logger.debug(f"epoch {epoch}")
             logger.debug(f"loss {loss}")
+            logger.debug(f"lr {current_lr}")
             swanlab.log(loss_logs_to_scalars(loss_logs), step=epoch)
 
         torch.cuda.empty_cache()
         result, predict = evaluator.eval_and_log(net, x, val_label, epoch, stage="val")
-        scheduler.step(result["OA"])
 
         OA = result["OA"]
         # save weight
