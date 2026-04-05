@@ -19,9 +19,9 @@ def applyPCA(X, numComponents=75):
 
 
 def load_data(data_set_name, data_path="./data"):
-    if data_set_name == "UP":
-        data = sio.loadmat(os.path.join(data_path, "UP", "PaviaU.mat"))["paviaU"]
-        labels = sio.loadmat(os.path.join(data_path, "UP", "PaviaU_gt.mat"))[
+    if data_set_name == "PaviaU":
+        data = sio.loadmat(os.path.join(data_path, "PaviaU", "PaviaU.mat"))["paviaU"]
+        labels = sio.loadmat(os.path.join(data_path, "PaviaU", "PaviaU_gt.mat"))[
             "paviaU_gt"
         ]
     elif data_set_name == "Houston":
@@ -29,6 +29,13 @@ def load_data(data_set_name, data_path="./data"):
         labels = sio.loadmat(os.path.join(data_path, "Houston", "Houston_GT.mat"))[
             "Houston_GT"
         ]
+    elif data_set_name == "IndianPines":
+        data = sio.loadmat(
+            os.path.join(data_path, "IndianPines", "Indian_pines_corrected.mat")
+        )["indian_pines_corrected"]
+        labels = sio.loadmat(
+            os.path.join(data_path, "IndianPines", "Indian_pines_gt.mat")
+        )["indian_pines_gt"]
     elif data_set_name == "HongHu":
         data = sio.loadmat(os.path.join(data_path, "HongHu", "WHU_Hi_HongHu.mat"))[
             "WHU_Hi_HongHu"
