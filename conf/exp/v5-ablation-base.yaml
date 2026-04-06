@@ -1,0 +1,27 @@
+model:
+  name: "v5-ablation-base"
+  instance:
+    _target_: models.v5.ablation.model.Model
+    use_local_enhancement_module: false
+    use_spatial_consistency_module: false
+
+epoch: 200
+
+optimizer:
+  label_smoothing: 0.1
+  weight_decay: 1e-4
+
+loss:
+  instance:
+    _target_: models.v5.ablation.model.LossCalculator
+    use_spatial_consistency_module: false
+
+src:
+  - train.py
+  - models/v5/
+  - models/v5/ablation/
+
+lr_scheduler:
+  name: "cosine"
+  warmup_epochs: 10
+  min_lr: 1e-6

@@ -1,5 +1,5 @@
 model:
-  name: "beta_v5_2"
+  name: "v5"
   instance:
     _target_: models.v5.main.Model
 

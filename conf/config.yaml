@@ -10,6 +10,10 @@ swanlab: "offline"
 hydra:
   job:
     chdir: true
+  run:
+    dir: ${hydra:runtime.cwd}/${exp.name}/${exp.dataset}/seed${exp.seed}-lr${exp.lr}
+  sweep:
+    subdir: ""
 
 exp:
   # ["HanChuan", "HongHu"]
