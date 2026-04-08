@@ -10,7 +10,7 @@ from omegaconf import DictConfig, OmegaConf
 from torchvision import transforms
 
 import utils.data_load_operate as data_load_operate
-from utils.artifact import save_json_file, save_src_files
+from utils.artifact import save_json_file, save_metric_tag, save_src_files
 from utils.evaluation import Evaluator
 from utils.HSICommonUtils import ImageStretching
 from utils.logger import setup_logger
@@ -43,6 +43,7 @@ def train(cfg: DictConfig) -> None:
 
     exp_model_name = cfg.exp.model.name
     dataset = cfg.exp.dataset
+    project_name = cfg.exp.project_name
 
     swanlab_mode = cfg.swanlab
 
@@ -50,11 +51,12 @@ def train(cfg: DictConfig) -> None:
     lr_scheduler_cfg = getattr(cfg.exp, "lr_scheduler", None)
 
     swanlab.init(
-        project="MambaNO",
+        project=project_name,
         workspace="kites",
-        experiment_name=f"{exp_model_name}_{dataset}",
+        experiment_name=f"{exp_model_name}",
         config=config_dict,
         mode=swanlab_mode,
+        reinit=True,
     )
 
     # if data_set_name in ["HanChuan", "Houston"]:
@@ -224,7 +226,7 @@ def train(cfg: DictConfig) -> None:
 
         OA = result["OA"]
         # save weight
-        if OA >= max(best_OA, 0.90):
+        if OA >= max(best_OA, 0.85):
             best_OA = OA
             save_json_file(result, "val_best_result.json")
             torch.save(net.state_dict(), best_model_path)
@@ -249,6 +251,7 @@ def train(cfg: DictConfig) -> None:
             net, x, test_label, epoch, stage="test"
         )
         save_json_file(result, "test_result.json")
+        save_metric_tag(f"Test_OA={result.get('OA'):.4f}")
 
         vis_a_image(
             gt,

@@ -47,3 +47,10 @@ def save_json_file(
     with open(path, "w") as f:
         json.dump(data, f, indent=2, default=_to_serializable)
     logger.debug(f"Saved artifact JSON file: {path}")
+
+
+def save_metric_tag(filename: str) -> None:
+    os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
+    with open(filename, "w") as f:
+        f.write(filename)
+    logger.debug(f"Saved metric tag file: {filename}")

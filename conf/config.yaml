@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - exp: v0
+  - exp: baseline
 
 root_dir: ${hydra:runtime.cwd}
 data_dir: ${root_dir}/data
@@ -11,18 +11,20 @@ hydra:
   job:
     chdir: true
   run:
-    dir: ${hydra:runtime.cwd}/${exp.name}/${exp.dataset}/seed${exp.seed}-lr${exp.lr}
+    dir: outputs/${exp.dataset}/${exp.model.name}/seed${exp.seed}-lr${exp.lr}
   sweep:
+    dir: outputs/${exp.dataset}/${exp.model.name}/seed${exp.seed}-lr${exp.lr}
     subdir: ""
 
 exp:
-  # ["HanChuan", "HongHu"]
+  project_name: "MambaNO"
+  # ["PaviaU", "Houston", "IndianPines", "HongHu", "HanChuan", "LongKou"]
   dataset: "HanChuan"
   train_samples: 30
   val_samples: 10
   seed: 42
   epoch: 2
-  lr: 3e-4
+  lr: 7e-4
   split_image: false
   src:
     - train.py
