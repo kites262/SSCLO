@@ -5,7 +5,7 @@ mamba install \
   pytorch \
   mamba-ssm=2.3.0 \
   torchvision \
-  -c pytorch -c nvidia
+  -c pytorch -c nvidia -c conda-forge
 
 uv pip install \
     scikit-learn \

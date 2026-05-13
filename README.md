@@ -1,6 +1,6 @@
 ## Baseline: Per-Dataset OA±std Table (Percentage)
 
-| Dataset     |   MambaHSI |    LocalGlobal |
+| Dataset     |   MambaHSI |          LGSFA |
 | ----------- | ---------: | -------------: |
 | HanChuan    | 90.21±1.67 |     92.73±0.34 |
 | HongHu      | 94.58±1.01 | **96.25±1.59** |
@@ -8,11 +8,11 @@
 | IndianPines |          - |              - |
 | LongKou     |          - |              - |
 | PaviaU      | 95.74±0.90 | **97.22±0.41** |
-| Dataset     |   MambaHSI |    LocalGlobal |
+| Dataset     |   MambaHSI |          LGSFA |
 
 ## Summary Table (Percentage)
 
-| Dataset     | v5-ablation-base | v5-ablation-consistency | v5-ablation-local | v5-ablation-full |   MambaHSI |    LocalGlobal |
+| Dataset     | v5-ablation-base | v5-ablation-consistency | v5-ablation-local | v5-ablation-full |   MambaHSI |          LGSFA |
 | ----------- | ---------------: | ----------------------: | ----------------: | ---------------: | ---------: | -------------: |
 | HanChuan    |       90.96±1.69 |              92.10±1.49 |        92.63±0.87 |   **95.18±0.45** | 90.21±1.67 |     92.73±0.34 |
 | HongHu      |       94.54±0.57 |              94.14±0.64 |        95.37±0.71 |       96.13±0.40 | 94.58±1.01 | **96.25±1.59** |
