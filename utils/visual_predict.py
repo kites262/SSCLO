@@ -40,3 +40,6 @@ def vis_a_image(
         save_single_gt_path,
         only_vis_label=True,
     )
+    # Save raw prediction array for downstream analysis (e.g. error-map figures).
+    npy_path = save_single_predict_path.replace(".png", ".npy")
+    np.save(npy_path, np.asarray(pred_vis, dtype=np.int32))

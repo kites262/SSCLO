@@ -3,6 +3,7 @@ data/
 data
 images/
 outputs/
+_archive/
 
 *.pyc
 __pycache__/

@@ -226,7 +226,7 @@ def train(cfg: DictConfig) -> None:
 
         OA = result["OA"]
         # save weight
-        if OA >= max(best_OA, 0.85):
+        if OA >= max(best_OA, 0.90):
             best_OA = OA
             save_json_file(result, "val_best_result.json")
             torch.save(net.state_dict(), best_model_path)
